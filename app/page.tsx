@@ -2,7 +2,7 @@ export default function Home() {
   return (
     <main style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto' }}>
       <header style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <h1>CPM Shumaher Hub</h1>
+        <h1>CPM Shumaher Hub!</h1>
         <p>Информационный дашборд: Car Parking & Landmand Simulator</p>
       </header>
 
