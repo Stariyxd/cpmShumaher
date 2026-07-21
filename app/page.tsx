@@ -34,28 +34,23 @@ export default function Home() {
       username: 'guest'
     };
   });
-// Проверка пользователя в таблице users при старте
+// Принудительная проверка или открытие модалки для теста
   useEffect(() => {
     async function checkUserProfile() {
-      // Если ты тестируешь в браузере с ПК, даем фейковый ID или разрешаем ввод, 
-      // либо убираем жесткий блок для гостя, если хочешь протестировать модалку:
-      const currentId = telegramUser.id === 'guest' ? 'test_pc_user' : telegramUser.id;
+      // Если ты на ПК и хочешь протестировать модалку — убираем проверку на гостя
+      const targetId = telegramUser.id === 'guest' ? 'test_user_id' : telegramUser.id;
 
-      if (!currentId) {
-        setCheckingProfile(false);
-        return;
-      }
-
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('users')
         .select('game_id')
-        .eq('telegram_id', String(currentId))
+        .eq('telegram_id', String(targetId))
         .single();
 
       if (data && data.game_id) {
         setGameId(data.game_id);
         setShowRegModal(false);
       } else {
+        // Принудительно открываем окно регистрации
         setShowRegModal(true);
       }
       setCheckingProfile(false);
@@ -63,15 +58,6 @@ export default function Home() {
 
     checkUserProfile();
   }, [telegramUser.id]);
-
-  useEffect(() => {
-    if (webAppUser?.id) {
-      setTelegramUser({
-        id: String(webAppUser.id),
-        username: webAppUser.username || 'user_' + webAppUser.id
-      });
-    }
-  }, [webAppUser]);
   // Стейты
   const [gameId, setGameId] = useState<string>('');
   const [inputGameId, setInputGameId] = useState<string>('');
@@ -721,7 +707,7 @@ useEffect(() => {
         onClose={() => setShowDisputeModal(false)}
         onSubmit={handleOpenDispute}
       />
-      {showRegModal && telegramUser.id !== 'guest' && (
+     {showRegModal && (
         <RegisterModal 
           telegramUser={telegramUser} 
           onRegistered={(newGameId) => {
