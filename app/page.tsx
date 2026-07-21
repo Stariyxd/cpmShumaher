@@ -16,6 +16,9 @@ import UserProfileStats from '@/components/UserProfileStats';
 const ADMIN_TELEGRAM_ID = '655880531'; // Замени на свой цифровой ID
 
 export default function Home() {
+  // Стейты для проверки профиля и регистрации
+
+
   // Получаем реальные данные строго из Telegram WebApp
   const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
 
@@ -31,7 +34,31 @@ export default function Home() {
       username: 'guest'
     };
   });
+// Проверка пользователя в таблице users при старте
+  useEffect(() => {
+    async function checkUserProfile() {
+      if (!telegramUser.id || telegramUser.id === 'guest') {
+        setCheckingProfile(false);
+        return;
+      }
 
+      const { data, error } = await supabase
+        .from('users')
+        .select('game_id')
+        .eq('telegram_id', String(telegramUser.id))
+        .single();
+
+      if (data && data.game_id) {
+        setGameId(data.game_id);
+        setShowRegModal(false);
+      } else {
+        setShowRegModal(true);
+      }
+      setCheckingProfile(false);
+    }
+
+    checkUserProfile();
+  }, [telegramUser.id]);
   useEffect(() => {
     if (webAppUser?.id) {
       setTelegramUser({
@@ -690,6 +717,15 @@ useEffect(() => {
         onClose={() => setShowDisputeModal(false)}
         onSubmit={handleOpenDispute}
       />
+      {showRegModal && telegramUser.id !== 'guest' && (
+        <RegisterModal 
+          telegramUser={telegramUser} 
+          onRegistered={(newGameId) => {
+            setGameId(newGameId);
+            setShowRegModal(false);
+          }} 
+        />
+      )}
     </main>
   );
 }
