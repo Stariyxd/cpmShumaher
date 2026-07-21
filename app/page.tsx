@@ -15,24 +15,23 @@ import UserProfileStats from '@/components/UserProfileStats';
 const ADMIN_TELEGRAM_ID = '655880531'; // Замени на свой цифровой ID
 
 export default function Home() {
+  // Получаем реальные данные строго из Telegram WebApp
   const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
-  
-  // Получаем ID и юзернейм: сначала из Telegram WebApp, если нет — из localStorage, иначе дефолт
-  const [telegramUser, setTelegramUser] = useState({ 
-    id: webAppUser?.id || (typeof window !== 'undefined' ? localStorage.getItem('cpm_tg_id') || '655880531' : '655880531'), 
-    username: webAppUser?.username || (typeof window !== 'undefined' ? localStorage.getItem('cpm_tg_username') || 'Stariy' : 'Stariy')
-  });
 
-  // Сохраняем реальные данные от Telegram в localStorage при запуске, чтобы они не терялись
-  useEffect(() => {
+  const [telegramUser, setTelegramUser] = useState(() => {
+    // Если Telegram WebApp передал ID — используем его
     if (webAppUser?.id) {
-      localStorage.setItem('cpm_tg_id', String(webAppUser.id));
-      localStorage.setItem('cpm_tg_username', webAppUser.username || 'Stariy');
-      setTelegramUser({
-        id: webAppUser.id,
-        username: webAppUser.username || 'Stariy'
-      });
+      return {
+        id: String(webAppUser.id),
+        username: webAppUser.username || 'user_' + webAppUser.id
+      };
     }
+    // ИНАЧЕ — это гость! Никаких жестких дефолтных ID вроде твоего.
+    return {
+      id: 'guest',
+      username: 'guest'
+    };
+  });
   }, [webAppUser]);
 console.log('Current User ID:', telegramUser.id, 'Is Admin:', String(telegramUser.id) === ADMIN_TELEGRAM_ID);
   const [gameId, setGameId] = useState('');
