@@ -21,7 +21,7 @@ export default function Home() {
     id: webAppUser?.id || 0, 
     username: webAppUser?.username || 'guest' 
   });
-
+console.log('Current User ID:', telegramUser.id, 'Is Admin:', String(telegramUser.id) === ADMIN_TELEGRAM_ID);
   const [gameId, setGameId] = useState('');
   const [isRegistered, setIsRegistered] = useState(false);
   const [showRegModal, setShowRegModal] = useState(false);
@@ -547,24 +547,24 @@ useEffect(() => {
           👤 Профиль
         </button>
 
-        {String(telegramUser.id) === ADMIN_TELEGRAM_ID && (
-          <button
-            onClick={() => {
-              fetchDisputedChats();
-              setActiveTab('moderation');
-            }}
-            className={`flex-1 py-2 rounded-lg font-medium transition relative ${
-              activeTab === 'moderation' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            🛡 Модер
-            {(pendingListings.length > 0 || disputedChats.length > 0) && (
-              <span className="absolute top-1 right-2 bg-red-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-mono">
-                {pendingListings.length + disputedChats.length}
-              </span>
-            )}
-          </button>
-        )}
+        {(String(telegramUser.id) === ADMIN_TELEGRAM_ID || Number(telegramUser.id) === Number(ADMIN_TELEGRAM_ID)) && (
+  <button
+    onClick={() => {
+      fetchDisputedChats();
+      setActiveTab('moderation');
+    }}
+    className={`flex-1 py-2 rounded-lg font-medium transition relative ${
+      activeTab === 'moderation' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
+    }`}
+  >
+    🛡 Модер
+    {(pendingListings.length > 0 || disputedChats.length > 0) && (
+      <span className="absolute top-1 right-2 bg-red-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-mono">
+        {pendingListings.length + disputedChats.length}
+      </span>
+    )}
+  </button>
+)}
       </div>
 
       {activeTab === 'feed' ? (
