@@ -35,7 +35,7 @@ export default function Home() {
   // Твой реальный административный Telegram ID
   const ADMIN_TELEGRAM_ID = '491338433298563077';
 
-  // Автоматическое определение пользователя (Telegram WebApp или твой ПК-профиль / локалхост)
+  // Автоматическое определение пользователя (только Telegram WebApp или честный гость)
   const [telegramUser, setTelegramUser] = useState<{ id: string; username: string }>(() => {
     if (typeof window !== 'undefined') {
       // 1. Проверяем официальный Telegram WebApp
@@ -47,35 +47,21 @@ export default function Home() {
         };
       }
 
-      // 2. Если зашли с ПК (браузер), проверяем сохраненный ранее ID в localStorage
+      // 2. Если зашли с ПК / браузера вне WebApp, проверяем, не сохранялся ли ID ранее в этом браузере
       const savedId = localStorage.getItem('cpm_saved_telegram_id');
       const savedUsername = localStorage.getItem('cpm_saved_telegram_username');
       if (savedId) {
         return { id: savedId, username: savedUsername || 'pc_user' };
       }
-
-      // 3. Автоматически подставляем твой админский аккаунт для разработки на ПК / localhost
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return { id: ADMIN_TELEGRAM_ID, username: 'Stariy' };
-      }
     }
 
-    // Запасной вариант для ПК, если локалхост не сработал
+    // Если это сторонний пользователь, открывший ссылку — он гость, а не админ!
     return {
-      id: ADMIN_TELEGRAM_ID,
-      username: 'Stariy'
+      id: 'guest',
+      username: 'guest'
     };
   });
-
   const isAdmin = String(telegramUser.id) === ADMIN_TELEGRAM_ID;
-
-  // Инициализация Telegram WebApp UI
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
-      window.Telegram.WebApp.ready();
-      window.Telegram.WebApp.expand();
-    }
-  }, []);
 
   // Единая функция проверки профиля, зависших сделок и загрузки данных
   useEffect(() => {
