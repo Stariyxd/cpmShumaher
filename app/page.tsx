@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/supabase';
 
 interface Ad {
   id: string;
@@ -21,30 +22,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'sell' | 'buy' | 'exchange'>('sell');
   const [showModal, setShowModal] = useState(false);
 
-  const [ads, setAds] = useState<Ad[]>([
-    {
-      id: '1',
-      title: 'BMW M5 F90',
-      category: 'sell',
-      price: '15,000,000 с.',
-      specs: '1200hp (1200) / 1400nm (1400)',
-      description: 'Фулл тюнинг, эксклюзивный винил, идеальное состояние.',
-      gameId: '459102',
-      contact: '@shumaher_cpm',
-      status: 'active',
-    },
-    {
-      id: '2',
-      title: 'Mercedes E63 AMG',
-      category: 'sell',
-      price: '12,000,000 с.',
-      specs: '1000hp (1000)',
-      description: 'Новый лот, ждет проверки модератором.',
-      gameId: '7841923',
-      contact: '@shumaher_cpm',
-      status: 'pending',
-    }
-  ]);
+  const [ads, setAds] = useState<Ad[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [formCategory, setFormCategory] = useState<'sell' | 'buy' | 'exchange'>('sell');
   const [formTitle, setFormTitle] = useState('');
@@ -52,11 +31,31 @@ export default function Home() {
   const [formSpecs, setFormSpecs] = useState('');
   const [formDesc, setFormDesc] = useState('');
 
-  const handleCreateAd = (e: React.FormEvent) => {
+  // Загрузка объявлений из Supabase при открытии сайта
+  useEffect(() => {
+    fetchAds();
+  }, []);
+
+  const fetchAds = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ads')
+        .select('*')
+        .order('id', { ascending: false });
+
+      if (error) throw error;
+      if (data) setAds(data);
+    } catch (err) {
+      console.error('Ошибка загрузки объявлений:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateAd = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const newAd: Ad = {
-      id: Date.now().toString(),
+    const newAd = {
       title: formTitle,
       category: formCategory,
       price: formPrice,
@@ -64,25 +63,54 @@ export default function Home() {
       description: formDesc,
       gameId: gameId,
       contact: '@' + (telegramUser.username || 'user'),
-      status: 'pending',
+      status: 'pending' as const,
     };
 
-    setAds([newAd, ...ads]);
-    setShowModal(false);
-    setFormTitle('');
-    setFormPrice('');
-    setFormSpecs('');
-    setFormDesc('');
+    try {
+      const { data, error } = await supabase.from('ads').insert([newAd]).select();
+      if (error) throw error;
 
-    alert('Объявление отправлено администратору на модерацию!');
+      if (data) {
+        setAds([data[0], ...ads]);
+      }
+      setShowModal(false);
+      setFormTitle('');
+      setFormPrice('');
+      setFormSpecs('');
+      setFormDesc('');
+      alert('Объявление отправлено администратору на модерацию!');
+    } catch (err) {
+      alert('Ошибка при создании объявления!');
+      console.error(err);
+    }
   };
 
-  const handleApprove = (id: string) => {
-    setAds(ads.map(ad => ad.id === id ? { ...ad, status: 'active' } : ad));
+  const handleApprove = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('ads')
+        .update({ status: 'active' })
+        .eq('id', id);
+
+      if (error) throw error;
+      setAds(ads.map(ad => ad.id === id ? { ...ad, status: 'active' } : ad));
+    } catch (err) {
+      console.error('Ошибка при одобрении:', err);
+    }
   };
 
-  const handleReject = (id: string) => {
-    setAds(ads.map(ad => ad.id === id ? { ...ad, status: 'rejected' } : ad));
+  const handleReject = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('ads')
+        .update({ status: 'rejected' })
+        .eq('id', id);
+
+      if (error) throw error;
+      setAds(ads.map(ad => ad.id === id ? { ...ad, status: 'rejected' } : ad));
+    } catch (err) {
+      console.error('Ошибка при отклонении:', err);
+    }
   };
 
   const filteredAds = ads.filter(ad => ad.category === activeTab && ad.status === 'active');
@@ -117,7 +145,9 @@ export default function Home() {
           </div>
         </header>
 
-        {currentView === 'admin' ? (
+        {loading ? (
+          <div className="text-center py-20 text-gray-500 text-xs">Загрузка данных из базы...</div>
+        ) : currentView === 'admin' ? (
           <div className="space-y-3">
             <div className="bg-gray-900 border border-yellow-500/30 p-4 rounded-2xl space-y-1">
               <h2 className="font-bold text-sm text-yellow-400">Очередь модерации</h2>
