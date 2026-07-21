@@ -11,15 +11,17 @@ interface Ad {
   description: string;
   gameId: string;
   contact: string;
+  status: 'pending' | 'active' | 'rejected';
 }
 
 export default function Home() {
-  const [telegramUser, setTelegramUser] = useState<{ id: number; username?: string } | null>({ id: 12345678, username: 'shumaher_cpm' });
-  const [gameId] = useState<string>('7841923'); // Привязанный Game ID пользователя
+  const [telegramUser] = useState<{ id: number; username?: string } | collection>({ id: 12345678, username: 'shumaher_cpm' });
+  const [gameId] = useState<string>('7841923');
+  const [currentView, setCurrentView] = useState<'marketplace' | 'admin'>('marketplace');
   const [activeTab, setActiveTab] = useState<'sell' | 'buy' | 'exchange'>('sell');
   const [showModal, setShowModal] = useState(false);
 
-  // Список объявлений (пока в памяти, позже подключим Supabase)
+  // Общий список объявлений (включая те, что ждут модерации)
   const [ads, setAds] = useState<Ad[]>([
     {
       id: '1',
@@ -30,26 +32,27 @@ export default function Home() {
       description: 'Фулл тюнинг, эксклюзивный винил, идеальное состояние.',
       gameId: '459102',
       contact: '@shumaher_cpm',
+      status: 'active',
     },
     {
       id: '2',
-      title: 'Ищу заряженный дрифт-кар',
-      category: 'buy',
-      price: 'Бюджет: 20,000,000 с.',
-      specs: '900hp+ / Дрифт настройка',
-      description: 'Куплю готовую машину подваливать боком.',
-      gameId: '883192',
-      contact: '@buyer_test',
+      title: 'Mercedes E63 AMG',
+      category: 'sell',
+      price: '12,000,000 с.',
+      specs: '1000hp (1000)',
+      description: 'Новый лот, ждет проверки модератором.',
+      gameId: '7841923',
+      contact: '@shumaher_cpm',
+      status: 'pending', // Висит на модерации
     }
   ]);
 
-  // Состояния для формы создания нового объявления
+  // Поля формы создания
   const [formCategory, setFormCategory] = useState<'sell' | 'buy' | 'exchange'>('sell');
   const [formTitle, setFormTitle] = useState('');
   const [formPrice, setFormPrice] = useState('');
   const [formSpecs, setFormSpecs] = useState('');
   const [formDesc, setFormDesc] = useState('');
-  const [formImage, setFormImage] = useState<File | null>(null);
 
   const handleCreateAd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,104 +64,182 @@ export default function Home() {
       price: formPrice,
       specs: formSpecs || 'Стандарт',
       description: formDesc,
-      gameId: gameId, // Автоподстановка привязанного Game ID
-      contact: telegramUser?.username ? `@${telegramUser.username}` : 'ID: ' + telegramUser?.id,
+      gameId: gameId,
+      contact: '@' + (telegramUser.username || 'user'),
+      status: 'pending', // Все новые уходят на модерацию админу
     };
 
     setAds([newAd, ...ads]);
     setShowModal(false);
-
-    // Сброс формы
     setFormTitle('');
     setFormPrice('');
     setFormSpecs('');
     setFormDesc('');
-    setFormImage(null);
 
-    alert('Объявление успешно создано и отправлено на модерацию администратору!');
+    alert('Объявление отправлено администратору на модерацию!');
   };
 
-  const filteredAds = ads.filter(ad => ad.category === activeTab);
+  // Действия админа
+  const handleApprove = (id: string) => {
+    setAds(ads.map(ad => ad.id === id ? { ...ad, status: 'active' } : ad));
+  };
+
+  const handleReject = (id: string) => {
+    setAds(ads.map(ad => ad.id === id ? { ...ad, status: 'rejected' } : ad));
+  };
+
+  // Фильтрация для пользователей (видна только активная лента)
+  const filteredAds = ads.filter(ad => ad.category === activeTab && ad.status === 'active');
+  // Для админа (видны все на модерации)
+  const pendingAds = ads.filter(ad => ad.status === 'pending');
 
   return (
     <main className="min-h-screen bg-gray-950 text-white font-sans pb-24 p-4">
       <div className="max-w-md mx-auto space-y-4">
         
-        {/* Шапка профиля и кнопка подачи */}
+        {/* Шапка с переключением на Админку */}
         <header className="flex justify-between items-center bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-lg">
           <div>
-            <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Игровой профиль</span>
-            <span className="font-mono font-bold text-yellow-400 text-sm">ID: {gameId}</span>
+            <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Режим работы</span>
+            <span className="font-bold text-yellow-400 text-xs">
+              {currentView === 'marketplace' ? '🏪 Маркетплейс' : '🛡 Админ-панель'}
+            </span>
           </div>
-          <button 
-            onClick={() => setShowModal(true)}
-            className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 font-bold px-3 py-2 rounded-xl text-xs transition shadow"
-          >
-            + Подать объявление
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setCurrentView(currentView === 'marketplace' ? 'admin' : 'marketplace')}
+              className="bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold px-3 py-2 rounded-xl text-xs transition border border-gray-700"
+            >
+              {currentView === 'marketplace' ? '⚙️ Админка' : '🔙 К витрине'}
+            </button>
+            {currentView === 'marketplace' && (
+              <button 
+                onClick={() => setShowModal(true)}
+                className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 font-bold px-3 py-2 rounded-xl text-xs transition shadow"
+              >
+                + Подать
+              </button>
+            )}
+          </div>
         </header>
 
-        {/* Переключатель вкладок */}
-        <div className="flex bg-gray-900 p-1.5 rounded-2xl border border-gray-800 shadow-md">
-          <button 
-            onClick={() => setActiveTab('sell')}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition ${activeTab === 'sell' ? 'bg-yellow-500 text-gray-950 shadow' : 'text-gray-400 hover:text-white'}`}
-          >
-            💰 Продажа
-          </button>
-          <button 
-            onClick={() => setActiveTab('buy')}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition ${activeTab === 'buy' ? 'bg-yellow-500 text-gray-950 shadow' : 'text-gray-400 hover:text-white'}`}
-          >
-            🛒 Покупка
-          </button>
-          <button 
-            onClick={() => setActiveTab('exchange')}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition ${activeTab === 'exchange' ? 'bg-yellow-500 text-gray-950 shadow' : 'text-gray-400 hover:text-white'}`}
-          >
-            🔄 Обмен
-          </button>
-        </div>
-
-        {/* Лента объявлений */}
-        <div className="space-y-3">
-          {filteredAds.length === 0 ? (
-            <div className="text-center py-12 text-gray-500 text-xs bg-gray-900/50 border border-gray-800/80 rounded-2xl">
-              В этом разделе пока нет объявлений.
+        {/* РАЗДЕЛ 1: АДМИН-ПАНЕЛЬ МОДЕРАЦИИ */}
+        {currentView === 'admin' ? (
+          <div className="space-y-3">
+            <div className="bg-gray-900 border border-yellow-500/30 p-4 rounded-2xl space-y-1">
+              <h2 className="font-bold text-sm text-yellow-400">Очередь модерации</h2>
+              <p className="text-[11px] text-gray-400">Здесь появляются новые объявления игроков. Одобренные сразу попадают в публичную ленту.</p>
             </div>
-          ) : (
-            filteredAds.map((ad) => (
-              <div key={ad.id} className="bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-md space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-base text-white">{ad.title}</h3>
-                    {ad.specs && (
-                      <span className="inline-block bg-gray-950 border border-gray-800 text-yellow-400 font-mono text-[10px] px-2 py-0.5 rounded-md mt-1">
-                        ⚙️ {ad.specs}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-yellow-400 font-extrabold text-sm">{ad.price}</span>
-                </div>
 
-                <p className="text-gray-300 text-xs leading-relaxed">{ad.description}</p>
-
-                <div className="pt-3 flex justify-between items-center border-t border-gray-800 text-xs">
-                  <span className="text-gray-500 font-mono text-[10px]">Game ID: {ad.gameId}</span>
-                  <button 
-                    onClick={() => alert(`Отклик отправлен автору лота (${ad.contact})!`)}
-                    className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-3.5 py-1.5 rounded-xl font-bold transition shadow"
-                  >
-                    {activeTab === 'sell' ? 'Купить / Спросить' : activeTab === 'buy' ? 'Предложить авто' : 'Предложить обмен'}
-                  </button>
-                </div>
+            {pendingAds.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 text-xs bg-gray-900/50 border border-gray-800 rounded-2xl">
+                Нет объявлений, ожидающих проверки. 🎉
               </div>
-            ))
-          )}
-        </div>
+            ) : (
+              pendingAds.map((ad) => (
+                <div key={ad.id} className="bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-md space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded uppercase font-bold">
+                        {ad.category}
+                      </span>
+                      <h3 className="font-bold text-base text-white mt-1">{ad.title}</h3>
+                      {ad.specs && (
+                        <span className="inline-block bg-gray-950 border border-gray-800 text-yellow-400 font-mono text-[10px] px-2 py-0.5 rounded-md mt-1">
+                          ⚙️ {ad.specs}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-yellow-400 font-extrabold text-sm">{ad.price}</span>
+                  </div>
+
+                  <p className="text-gray-300 text-xs leading-relaxed">{ad.description}</p>
+
+                  <div className="pt-3 flex justify-between items-center border-t border-gray-800 text-xs">
+                    <span className="text-gray-500 font-mono text-[10px]">ID: {ad.gameId} | {ad.contact}</span>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleReject(ad.id)}
+                        className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 px-3 py-1.5 rounded-xl font-bold transition"
+                      >
+                        ❌ Отклонить
+                      </button>
+                      <button 
+                        onClick={() => handleApprove(ad.id)}
+                        className="bg-green-500 hover:bg-green-400 text-gray-950 px-3 py-1.5 rounded-xl font-bold transition shadow"
+                      >
+                        ✅ Одобрить
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          /* РАЗДЕЛ 2: ПУБЛИЧНАЯ ВИТРИНА */
+          <>
+            <div className="flex bg-gray-900 p-1.5 rounded-2xl border border-gray-800 shadow-md">
+              <button 
+                onClick={() => setActiveTab('sell')}
+                className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition ${activeTab === 'sell' ? 'bg-yellow-500 text-gray-950 shadow' : 'text-gray-400 hover:text-white'}`}
+              >
+                💰 Продажа
+              </button>
+              <button 
+                onClick={() => setActiveTab('buy')}
+                className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition ${activeTab === 'buy' ? 'bg-yellow-500 text-gray-950 shadow' : 'text-gray-400 hover:text-white'}`}
+              >
+                🛒 Покупка
+              </button>
+              <button 
+                onClick={() => setActiveTab('exchange')}
+                className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition ${activeTab === 'exchange' ? 'bg-yellow-500 text-gray-950 shadow' : 'text-gray-400 hover:text-white'}`}
+              >
+                🔄 Обмен
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {filteredAds.length === 0 ? (
+                <div className="text-center py-12 text-gray-500 text-xs bg-gray-900/50 border border-gray-800/80 rounded-2xl">
+                  В этом разделе пока нет активных объявлений.
+                </div>
+              ) : (
+                filteredAds.map((ad) => (
+                  <div key={ad.id} className="bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-md space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-bold text-base text-white">{ad.title}</h3>
+                        {ad.specs && (
+                          <span className="inline-block bg-gray-950 border border-gray-800 text-yellow-400 font-mono text-[10px] px-2 py-0.5 rounded-md mt-1">
+                            ⚙️ {ad.specs}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-yellow-400 font-extrabold text-sm">{ad.price}</span>
+                    </div>
+
+                    <p className="text-gray-300 text-xs leading-relaxed">{ad.description}</p>
+
+                    <div className="pt-3 flex justify-between items-center border-t border-gray-800 text-xs">
+                      <span className="text-gray-500 font-mono text-[10px]">Game ID: {ad.gameId}</span>
+                      <button 
+                        onClick={() => alert(`Отклик отправлен автору лота (${ad.contact})!`)}
+                        className="bg-yellow-500 hover:bg-yellow-400 text-gray-950 px-3.5 py-1.5 rounded-xl font-bold transition shadow"
+                      >
+                        {activeTab === 'sell' ? 'Купить / Спросить' : activeTab === 'buy' ? 'Предложить авто' : 'Предложить обмен'}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Модальное окно создания объявления */}
+      {/* Модалка создания */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-gray-900 border border-gray-800 w-full max-w-md p-5 rounded-3xl space-y-4 shadow-2xl my-auto">
@@ -169,41 +250,40 @@ export default function Home() {
             
             <form onSubmit={handleCreateAd} className="space-y-3">
               <div>
-                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Тип объявления</label>
+                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Тип</label>
                 <select 
-                  value={formCategory} 
-                  onChange={(e) => setFormCategory(e.target.value as any)}
+                  value={formCategory} onChange={(e) => setFormCategory(e.target.value as any)}
                   className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-yellow-500"
                 >
-                  <option value="sell">Продажа (Sell)</option>
-                  <option value="buy">Покупка (Buy)</option>
-                  <option value="exchange">Обмен (Exchange)</option>
+                  <option value="sell">Продажа</option>
+                  <option value="buy">Покупка</option>
+                  <option value="exchange">Обмен</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Название авто / товара</label>
+                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Название авто</label>
                 <input 
                   type="text" required value={formTitle} onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="Например: BMW M5 F90"
+                  placeholder="BMW M5 F90"
                   className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-yellow-500"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Мощность / Настройка (опционально)</label>
+                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Мощность (hp / nm)</label>
                 <input 
                   type="text" value={formSpecs} onChange={(e) => setFormSpecs(e.target.value)}
-                  placeholder="1234hp (1234) / 1234nm (1234)"
+                  placeholder="1200hp (1200) / 1400nm (1400)"
                   className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-yellow-500 font-mono"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Цена или бюджет (в игре)</label>
+                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Цена / Бюджет</label>
                 <input 
                   type="text" required value={formPrice} onChange={(e) => setFormPrice(e.target.value)}
-                  placeholder="Например: 15,000,000 с."
+                  placeholder="15,000,000 с."
                   className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-yellow-500"
                 />
               </div>
@@ -212,23 +292,9 @@ export default function Home() {
                 <label className="text-[11px] text-gray-400 block mb-1 font-medium">Описание</label>
                 <textarea 
                   required value={formDesc} onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Опишите состояние, винил, особенности..."
+                  placeholder="Фулл тюнинг..."
                   className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-yellow-500 h-20 resize-none"
                 />
-              </div>
-
-              <div>
-                <label className="text-[11px] text-gray-400 block mb-1 font-medium">Скриншот внешнего вида / характеристик</label>
-                <input 
-                  type="file" accept="image/*"
-                  onChange={(e) => e.target.files && setFormImage(e.target.files[0])}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2 text-[10px] text-gray-400 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-yellow-500 file:text-gray-950 hover:file:bg-yellow-400"
-                />
-              </div>
-
-              <div className="bg-gray-950 border border-gray-800 p-2.5 rounded-xl flex justify-between items-center text-[11px] text-gray-400 font-mono">
-                <span>Game ID (автоподстановка):</span>
-                <span className="text-yellow-400 font-bold">{gameId}</span>
               </div>
 
               <button 
