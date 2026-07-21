@@ -72,7 +72,7 @@ export default function Home() {
 
     const { error } = await supabase.from('users').insert([
       { 
-        telegram_id: telegramUser.id, 
+        telegram_id: String(telegramUser.id), 
         username: telegramUser.username, 
         game_id: inputGameId 
       }
@@ -83,7 +83,8 @@ export default function Home() {
       setIsRegistered(true);
       setShowRegModal(false);
     } else {
-      alert('Ошибка при регистрации, попробуй еще раз.');
+      console.error('Ошибка Supabase:', error);
+      alert(`Ошибка: ${error.message} (Код: ${error.code})`);
     }
   };
 
