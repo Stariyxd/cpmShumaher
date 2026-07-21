@@ -681,7 +681,7 @@ useEffect(() => {
         />
       )}
 
-      {showRegModal && telegramUser.id !== 'guest' && (
+      {showRegModal && (
   <RegisterModal 
     telegramUser={telegramUser} 
     onRegistered={(newGameId) => {
