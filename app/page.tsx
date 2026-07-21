@@ -19,8 +19,6 @@ export default function Home() {
   const [inputGameId, setInputGameId] = useState('');
   
   const [listings, setListings] = useState<any[]>([]);
-  const [title, setTitle] = useState('');
-  const [price, setPrice] = useState('');
 
   // Инициализация WebApp
   useEffect(() => {
@@ -56,7 +54,7 @@ export default function Home() {
   // Загрузка ленты объявлений
   const fetchListings = async () => {
     const { data, error } = await supabase
-      .from('listings')
+      .from('marketplace_listings')
       .select('*')
       .order('created_at', { ascending: false });
 
@@ -83,19 +81,23 @@ export default function Home() {
       setIsRegistered(true);
       setShowRegModal(false);
     } else {
-      console.error('Ошибка Supabase:', error);
-      alert(`Ошибка: ${error.message} (Код: ${error.code})`);
+      alert(`Ошибка регистрации: ${error.message}`);
     }
   };
 
   // Функция отправки уведомления администратору в Telegram
-  const sendTelegramNotification = async (listingTitle: string, listingPrice: number, username: string, userGameId: string) => {
-    const BOT_TOKEN = '8481767122:AAEupsu3pBNe6fal_kkiePBMl_u8TVtKVFY'; // Например: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
-    const ADMIN_CHAT_ID = '655880531'; // Твой цифровой ID в телеграме
+  const sendTelegramNotification = async (formData: any, username: string, userGameId: string) => {
+    const BOT_TOKEN = 'ВСТАВЬ_СЮДА_ТОКЕН_БОТА'; 
+    const ADMIN_CHAT_ID = 'ВСТАВЬ_СЮДА_ТВОЙ_TELEGRAM_ID'; 
 
-    const message = `🔔 **Новое объявление на модерацию!**\n\n` +
-      `🚗 Машина: ${listingTitle}\n` +
-      `💰 Цена: $${listingPrice.toLocaleString()}\n` +
+    const typeEmoji = formData.type === 'sell' ? '💰 Продажа' : formData.type === 'buy' ? '🛒 Покупка' : '🔄 Обмен';
+
+    const message = `🔔 **Новая заявка на модерацию! (${typeEmoji})**\n\n` +
+      `🚗 Предмет: ${formData.title}\n` +
+      (formData.price ? `💰 Цена/Бюджет: $${Number(formData.price).toLocaleString()}\n` : '') +
+      (formData.power ? `⚡ Мощность: ${formData.power}\n` : '') +
+      (formData.exchangeTerms ? `🎯 Условия: ${formData.exchangeTerms}\n` : '') +
+      `🏷 Категория: ${formData.carType}\n` +
       `👤 Продавец: @${username} (Game ID: ${userGameId})`;
 
     try {
@@ -114,20 +116,30 @@ export default function Home() {
   };
 
   // Создание объявления
-  const handleCreateListing = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateListing = async (formData: {
+    type: 'buy' | 'sell' | 'exchange';
+    title: string;
+    price: string;
+    power: string;
+    carType: string;
+    exchangeTerms: string;
+  }) => {
     if (!isRegistered) {
       setShowRegModal(true);
       return;
     }
 
-    const numericPrice = Number(price);
+    const numericPrice = formData.price ? Number(formData.price) : null;
 
-    const { error } = await supabase.from('listings').insert([
+    const { error } = await supabase.from('marketplace_listings').insert([
       {
-        title,
+        type: formData.type,
+        title: formData.title,
         price: numericPrice,
-        telegram_id: telegramUser.id,
+        power: formData.power || null,
+        car_type: formData.carType,
+        exchange_terms: formData.exchangeTerms || null,
+        telegram_id: String(telegramUser.id),
         username: telegramUser.username,
         game_id: gameId,
         status: 'pending'
@@ -135,15 +147,11 @@ export default function Home() {
     ]);
 
     if (!error) {
-      // Отправляем уведомление тебе в телеграм
-      await sendTelegramNotification(title, numericPrice, telegramUser.username, gameId);
-
-      setTitle('');
-      setPrice('');
+      await sendTelegramNotification(formData, telegramUser.username, gameId);
       fetchListings();
-      alert('Объявление отправлено на модерацию!');
+      alert('Объявление успешно отправлено на модерацию!');
     } else {
-      alert('Не удалось создать объявление.');
+      alert(`Не удалось создать объявление: ${error.message}`);
     }
   };
 
@@ -161,14 +169,8 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Форма создания объявления */}
-      <ListingForm 
-        title={title}
-        setTitle={setTitle}
-        price={price}
-        setPrice={setPrice}
-        onSubmit={handleCreateListing}
-      />
+      {/* Форма создания расширенного объявления */}
+      <ListingForm onSubmit={handleCreateListing} />
 
       {/* Лента объявлений */}
       <section className="space-y-3">
@@ -179,15 +181,35 @@ export default function Home() {
           listings.map((item) => (
             <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-3 flex justify-between items-center">
               <div>
-                <h3 className="text-xs font-bold text-white">{item.title}</h3>
-                <p className="text-[11px] text-yellow-400 font-mono mt-0.5">${item.price.toLocaleString()}</p>
-                <span className="text-[10px] text-gray-500">Продавец: @{item.username} (ID: {item.game_id})</span>
+                <div className="flex items-center space-x-2">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                    item.type === 'sell' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                    item.type === 'buy' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                    'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                  }`}>
+                    {item.type === 'sell' ? 'ПРОДАЖА' : item.type === 'buy' ? 'ПОКУПКА' : 'ОБМЕН'}
+                  </span>
+                  <h3 className="text-xs font-bold text-white">{item.title}</h3>
+                </div>
+
+                {item.price && (
+                  <p className="text-[11px] text-yellow-400 font-mono mt-1">${item.price.toLocaleString()}</p>
+                )}
+                {item.exchange_terms && (
+                  <p className="text-[11px] text-purple-300 mt-1">Хочу: {item.exchange_terms}</p>
+                )}
+                {item.power && (
+                  <p className="text-[10px] text-gray-400 font-mono">Мощность: {item.power}</p>
+                )}
+
+                <span className="text-[10px] text-gray-500 block mt-1">Продавец: @{item.username} (ID: {item.game_id})</span>
               </div>
               <span className={`text-[10px] px-2 py-1 rounded-lg ${
-                item.status === 'approved' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 
-                'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                item.status === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 
+                item.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
+                'bg-gray-800 text-gray-400'
               }`}>
-                {item.status === 'approved' ? 'Активно' : 'На модерации'}
+                {item.status === 'active' ? 'Активно' : item.status === 'pending' ? 'На модерации' : item.status}
               </span>
             </div>
           ))
