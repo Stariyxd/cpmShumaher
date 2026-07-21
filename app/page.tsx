@@ -9,6 +9,9 @@ import AnonymousChat from '@/components/AnonymousChat';
 import ModerationPanel from '@/components/ModerationPanel';
 import MyChatsList from '@/components/MyChatsList';
 import ReviewModal from '@/components/ReviewModal';
+import DisputeModal from '@/components/DisputeModal';
+
+const ADMIN_TELEGRAM_ID = 'ТВОЙ_TELEGRAM_ID'; // Замени на свой ID
 
 export default function Home() {
   const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
@@ -28,9 +31,10 @@ export default function Home() {
   const [disputedChats, setDisputedChats] = useState<any[]>([]);
   const [myChats, setMyChats] = useState<any[]>([]);
   
-  // Состояния для модалки отзывов
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [pendingReviewChat, setPendingReviewChat] = useState<any>(null);
+
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'feed' | 'chats' | 'moderation' | 'chat'>('feed');
 
@@ -48,14 +52,13 @@ export default function Home() {
     const checkUserRegistration = async () => {
       if (!telegramUser.id) return;
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('users')
         .select('*')
         .eq('telegram_id', telegramUser.id)
         .single();
 
       if (data) {
-        // Проверяем, не забанен ли пользователь
         if (data.is_banned) {
           alert('Ваш аккаунт заблокирован администрацией!');
           return;
@@ -119,7 +122,6 @@ export default function Home() {
     e.preventDefault();
     if (!inputGameId) return;
 
-    // upsert обновит запись, если telegram_id уже существует, или создаст новую
     const { error } = await supabase.from('users').upsert([
       { 
         telegram_id: String(telegramUser.id), 
@@ -145,7 +147,6 @@ export default function Home() {
       return;
     }
 
-    // Проверяем статус бана пользователя
     const { data: userData } = await supabase
       .from('users')
       .select('is_banned, is_shadowbanned')
@@ -167,6 +168,8 @@ export default function Home() {
         power: formData.power || null,
         car_type: formData.carType,
         exchange_terms: formData.exchangeTerms || null,
+        image_exterior: formData.image_exterior,
+        image_specs: formData.image_specs,
         telegram_id: String(telegramUser.id),
         username: telegramUser.username,
         game_id: gameId,
@@ -176,7 +179,8 @@ export default function Home() {
 
     if (!error) {
       fetchAllListings();
-      alert(userData?.is_shadowbanned ? 'Объявление отправлено на модерацию!' : 'Объявление отправлено на модерацию!');
+      setActiveTab('feed');
+      alert('Объявление отправлено на модерацию!');
     } else {
       alert(`Ошибка: ${error.message}`);
     }
@@ -331,19 +335,56 @@ export default function Home() {
     fetchDisputedChats();
   };
 
-  const handleOpenDispute = async () => {
+  const handleOpenDispute = async (reason: string, files: FileList | null) => {
     if (!activeChat) return;
-    if (!confirm('Вы уверены, что хотите позвать администратора? Чат будет передан на рассмотрение модераторам.')) return;
 
-    await supabase
+    let evidenceUrls: string[] = [];
+    if (files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `dispute_${Date.now()}_${Math.random()}.${fileExt}`;
+        const filePath = `disputes/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('listing-images')
+          .upload(filePath, file);
+
+        if (!uploadError) {
+          const { data: publicData } = supabase.storage
+            .from('listing-images')
+            .getPublicUrl(filePath);
+          if (publicData?.publicUrl) {
+            evidenceUrls.push(publicData.publicUrl);
+          }
+        }
+      }
+    }
+
+    const { error } = await supabase
       .from('marketplace_chats')
       .update({ status: 'dispute' })
       .eq('id', activeChat.id);
 
-    alert('Администратор вызван! Ожидайте подключения.');
-    setActiveChat(null);
-    setActiveTab('feed');
-    fetchDisputedChats();
+    await supabase.from('marketplace_disputes').insert([
+      {
+        deal_id: activeChat.id,
+        opened_by: String(telegramUser.id),
+        reason: reason,
+        evidence: evidenceUrls,
+        status: 'pending'
+      }
+    ]);
+
+    if (!error) {
+      alert('Спор успешно открыт и передан администратору!');
+      setShowDisputeModal(false);
+      setActiveChat(null);
+      setActiveTab('feed');
+      fetchDisputedChats();
+    } else {
+      alert(`Ошибка: ${error.message}`);
+    }
   };
 
   return (
@@ -381,27 +422,32 @@ export default function Home() {
           💬 Сделки
         </button>
 
-        <button
-          onClick={() => {
-            fetchDisputedChats();
-            setActiveTab('moderation');
-          }}
-          className={`flex-1 py-2 rounded-lg font-medium transition relative ${
-            activeTab === 'moderation' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          🛡 Модер
-          {(pendingListings.length > 0 || disputedChats.length > 0) && (
-            <span className="absolute top-1 right-2 bg-red-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-mono">
-              {pendingListings.length + disputedChats.length}
-            </span>
-          )}
-        </button>
+        {String(telegramUser.id) === ADMIN_TELEGRAM_ID && (
+          <button
+            onClick={() => {
+              fetchDisputedChats();
+              setActiveTab('moderation');
+            }}
+            className={`flex-1 py-2 rounded-lg font-medium transition relative ${
+              activeTab === 'moderation' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            🛡 Модер
+            {(pendingListings.length > 0 || disputedChats.length > 0) && (
+              <span className="absolute top-1 right-2 bg-red-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-mono">
+                {pendingListings.length + disputedChats.length}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {activeTab === 'feed' ? (
         <>
-          <ListingForm onSubmit={handleCreateListing} />
+          <ListingForm 
+            onSubmit={handleCreateListing} 
+            onCancel={() => setActiveTab('feed')} 
+          />
           <MarketplaceFeed listings={listings} onRespond={handleRespond} />
         </>
       ) : activeTab === 'chats' ? (
@@ -421,7 +467,7 @@ export default function Home() {
           telegramUserId={telegramUser.id}
           onSendMessage={handleSendMessage}
           onCloseChat={handleCloseChat}
-          onOpenDispute={handleOpenDispute}
+          onOpenDispute={() => setShowDisputeModal(true)}
         />
       ) : (
         <ModerationPanel 
@@ -436,7 +482,6 @@ export default function Home() {
         />
       )}
 
-      {/* Модальное окно регистрации Game ID */}
       <RegisterModal 
         show={showRegModal}
         onSubmit={handleRegister}
@@ -444,7 +489,6 @@ export default function Home() {
         setInputGameId={setInputGameId}
       />
 
-      {/* Модальное окно оценки сделки и отзывов */}
       <ReviewModal
         show={showReviewModal}
         onSubmit={handleSendReview}
@@ -456,6 +500,12 @@ export default function Home() {
           fetchAllListings();
           fetchDisputedChats();
         }}
+      />
+
+      <DisputeModal
+        show={showDisputeModal}
+        onClose={() => setShowDisputeModal(false)}
+        onSubmit={handleOpenDispute}
       />
     </main>
   );
