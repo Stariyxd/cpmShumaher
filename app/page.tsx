@@ -48,15 +48,22 @@ export default function Home() {
     const checkUserRegistration = async () => {
       if (!telegramUser.id) return;
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('telegram_id', telegramUser.id)
         .single();
 
       if (data) {
+        // Проверяем, не забанен ли пользователь
+        if (data.is_banned) {
+          alert('Ваш аккаунт заблокирован администрацией!');
+          return;
+        }
+
         setGameId(data.game_id);
         setIsRegistered(true);
+        setShowRegModal(false);
       } else {
         setShowRegModal(true);
       }
@@ -112,13 +119,16 @@ export default function Home() {
     e.preventDefault();
     if (!inputGameId) return;
 
-    const { error } = await supabase.from('users').insert([
+    // upsert обновит запись, если telegram_id уже существует, или создаст новую
+    const { error } = await supabase.from('users').upsert([
       { 
         telegram_id: String(telegramUser.id), 
         username: telegramUser.username, 
-        game_id: inputGameId 
+        game_id: inputGameId,
+        is_banned: false,
+        is_shadowbanned: false
       }
-    ]);
+    ], { onConflict: 'telegram_id' });
 
     if (!error) {
       setGameId(inputGameId);
