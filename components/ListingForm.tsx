@@ -78,8 +78,9 @@ export default function ListingForm({ onSubmit, onCancel }: ListingFormProps) {
         power,
         carType,
         exchangeTerms,
-        image_exterior: exteriorUrl,
-        image_specs: specsUrl,
+        image_url: exteriorUrl,        // Основная картинка для ленты (внешний вид)
+        image_exterior: exteriorUrl,   
+        image_specs: specsUrl,         
       });
     } catch (error: any) {
       alert(`Ошибка при загрузке изображений: ${error.message}`);
