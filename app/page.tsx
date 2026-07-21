@@ -16,53 +16,9 @@ import UserProfileStats from '@/components/UserProfileStats';
 
 export default function Home() {
   // Стейты для проверки профиля и регистрации
-
-
-  // Получаем реальные данные строго из Telegram WebApp
-
-
-  const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
-
-  const [telegramUser, setTelegramUser] = useState(() => {
-    if (webAppUser?.id) {
-      return {
-        id: String(webAppUser.id),
-        username: webAppUser.username || 'user_' + webAppUser.id
-      };
-    }
-    return {
-      id: 'guest',
-      username: 'guest'
-    };
-  });
-const ADMIN_TELEGRAM_ID = '655880531'; // Твой реальный ID
-// Принудительная проверка или открытие модалки для теста
-  useEffect(() => {
-    async function checkUserProfile() {
-      // Если ты на ПК и хочешь протестировать модалку — убираем проверку на гостя
-      const targetId = telegramUser.id === 'guest' ? 'test_user_id' : telegramUser.id;
-
-      const { data } = await supabase
-        .from('users')
-        .select('game_id')
-        .eq('telegram_id', String(targetId))
-        .single();
-
-      if (data && data.game_id) {
-        setGameId(data.game_id);
-        setShowRegModal(false);
-      } else {
-        // Принудительно открываем окно регистрации
-        setShowRegModal(true);
-      }
-      setCheckingProfile(false);
-    }
-
-    checkUserProfile();
-  }, [telegramUser.id]);
-  // Стейты
-  const [gameId, setGameId] = useState<string>('');
-  const [inputGameId, setInputGameId] = useState<string>('');
+const [checkingProfile, setCheckingProfile] = useState<boolean>(true);
+const [gameId, setGameId] = useState<string>('');
+const [inputGameId, setInputGameId] = useState<string>('');
   const [isRegistered, setIsRegistered] = useState<boolean>(false);
   const [showRegModal, setShowRegModal] = useState<boolean>(false);
 
@@ -79,12 +35,77 @@ const ADMIN_TELEGRAM_ID = '655880531'; // Твой реальный ID
 
   const [activeChat, setActiveChat] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
-  const [checkingProfile, setCheckingProfile] = useState<boolean>(true);
 
-  // Проверка прав администратора в консоли
+  // Получаем реальные данные строго из Telegram WebApp
+  const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
+
+  const [telegramUser, setTelegramUser] = useState(() => {
+    if (webAppUser?.id) {
+      return {
+        id: String(webAppUser.id),
+        username: webAppUser.username || 'user_' + webAppUser.id
+      };
+    }
+    return {
+      id: 'guest',
+      username: 'guest'
+    };
+  });
+const ADMIN_TELEGRAM_ID = '655880531'; // Твой реальный ID
+// Проверка прав администратора в консоли
   const isAdmin = String(telegramUser.id) === ADMIN_TELEGRAM_ID;
   console.log('Current User ID:', telegramUser.id, 'Is Admin:', isAdmin);
+// 4. Только ПОСЛЕ этого идет проверка checkingProfile (лоадер)
+  if (checkingProfile) {
+    return (
+      <div style={{ background: '#0e1621', height: '100vh', color: '#fff', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        Загрузка...
+      </div>
+    );
+  }
+// Проверка пользователя в таблице users при старте
+  useEffect(() => {
+    async function checkUserProfile() {
+      // Если данных о пользователе еще нет или это гость (и не захардкожен тест)
+      if (!telegramUser.id) {
+        setCheckingProfile(false);
+        return;
+      }
 
+      // Если это гость с ПК, для теста можем дать возможность ввести ID, 
+      // а в Telegram будет подтягиваться реальный ID юзера
+      if (telegramUser.id === 'guest') {
+        setShowRegModal(true);
+        setCheckingProfile(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('game_id')
+        .eq('telegram_id', String(telegramUser.id))
+        .single();
+
+      if (data && data.game_id) {
+        // Если нашли в базе — сразу авторизуем (записываем gameId, модалку не показываем)
+        setGameId(data.game_id);
+        setShowRegModal(false);
+      } else {
+        // Если в базе нет — открываем окно регистрации
+        setShowRegModal(true);
+      }
+      
+      setCheckingProfile(false);
+    }
+
+    checkUserProfile();
+  }, [telegramUser.id]);
+  // Стейты
+  
+  
+  
+
+  
   // Проверка привязки игрового ID в Supabase при старте
   useEffect(() => {
     async function fetchUserProfile() {
