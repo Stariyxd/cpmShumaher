@@ -12,13 +12,9 @@ import ReviewModal from '@/components/ReviewModal';
 import DisputeModal from '@/components/DisputeModal';
 import UserProfileStats from '@/components/UserProfileStats';
 
-
-
 export default function Home() {
-  // Стейты для проверки профиля и регистрации
-const [checkingProfile, setCheckingProfile] = useState<boolean>(true);
-const [gameId, setGameId] = useState<string>('');
-const [inputGameId, setInputGameId] = useState<string>('');
+  const [checkingProfile, setCheckingProfile] = useState<boolean>(true);
+  const [gameId, setGameId] = useState<string>('');
   const [isRegistered, setIsRegistered] = useState<boolean>(false);
   const [showRegModal, setShowRegModal] = useState<boolean>(false);
 
@@ -36,99 +32,107 @@ const [inputGameId, setInputGameId] = useState<string>('');
   const [activeChat, setActiveChat] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
 
-  // Получаем реальные данные строго из Telegram WebApp
-  const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
+  // Автоматическое определение пользователя (Telegram WebApp или сохраненный на ПК / localhost)
+  const [telegramUser, setTelegramUser] = useState<{ id: string; username: string }>(() => {
+    if (typeof window !== 'undefined') {
+      // 1. Проверяем официальный Telegram WebApp
+      const webAppUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+      if (webAppUser?.id) {
+        return {
+          id: String(webAppUser.id),
+          username: webAppUser.username || 'user_' + webAppUser.id
+        };
+      }
 
-  const [telegramUser, setTelegramUser] = useState(() => {
-    if (webAppUser?.id) {
-      return {
-        id: String(webAppUser.id),
-        username: webAppUser.username || 'user_' + webAppUser.id
-      };
+      // 2. Если зашли с ПК (браузер), проверяем сохраненный ранее ID в localStorage
+      const savedId = localStorage.getItem('cpm_saved_telegram_id');
+      const savedUsername = localStorage.getItem('cpm_saved_telegram_username');
+      if (savedId) {
+        return { id: savedId, username: savedUsername || 'pc_user' };
+      }
+
+      // 3. ДЛЯ УДОБСТВА ТЕСТА НА ПК: если это локальная разработка и ID еще не сохранен,
+      // можешь автоматически подставить свой админский ID, чтобы в браузере сразу открывалась твоя админка
+      // (Убери эту строчку, если хочешь тестировать чистых гостей)
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return { id: '655880531', username: 'Stariy' };
+      }
     }
+
     return {
       id: 'guest',
       username: 'guest'
     };
   });
-const ADMIN_TELEGRAM_ID = '655880531'; // Твой реальный ID
-// Проверка прав администратора в консоли
+
+  const ADMIN_TELEGRAM_ID = '655880531';
   const isAdmin = String(telegramUser.id) === ADMIN_TELEGRAM_ID;
-  console.log('Current User ID:', telegramUser.id, 'Is Admin:', isAdmin);
 
-// Проверка пользователя в таблице users при старте
+  // Инициализация Telegram WebApp UI
   useEffect(() => {
-    async function checkUserProfile() {
-      try {
-        if (!telegramUser.id || telegramUser.id === 'guest') {
-          setShowRegModal(true);
-          setCheckingProfile(false);
-          return;
-        }
+    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+    }
+  }, []);
 
-        // Используем .maybeSingle() вместо .single() — она не падает с ошибкой, если юзера еще нет в базе
+  // Единая функция проверки профиля, зависших сделок и загрузки данных
+  useEffect(() => {
+    async function initApp() {
+      if (!telegramUser.id || telegramUser.id === 'guest') {
+        setShowRegModal(true);
+        setCheckingProfile(false);
+        return;
+      }
+
+      try {
+        // Проверяем зависшие сделки
+        await checkStuckDeals();
+
+        // Проверяем пользователя в таблице users
         const { data, error } = await supabase
           .from('users')
-          .select('game_id')
+          .select('*')
           .eq('telegram_id', String(telegramUser.id))
           .maybeSingle();
 
-        if (data && data.game_id) {
-          // Юзер есть в базе — авторизуем
+        if (error) {
+          console.error("Ошибка при проверке пользователя:", error.message);
+        }
+
+        if (data) {
+          if (data.is_banned) {
+            alert('Ваш аккаунт заблокирован администрацией!');
+            setCheckingProfile(false);
+            return;
+          }
+
           setGameId(data.game_id);
+          setIsRegistered(true);
           setShowRegModal(false);
         } else {
-          // Юзера нет в базе — открываем регистрацию
+          // Если в базе нет — открываем модалку регистрации
           setShowRegModal(true);
         }
+
+        // Подгружаем ленту и споры
+        await fetchAllListings();
+        await fetchDisputedChats();
+
       } catch (err) {
-        console.error("Ошибка:", err);
+        console.error("Ошибка инициализации:", err);
         setShowRegModal(true);
       } finally {
         setCheckingProfile(false);
       }
     }
 
-    checkUserProfile();
-  }, [telegramUser.id]);
-  // Стейты
-  
-  
-  
-
-  
-  // Проверка привязки игрового ID в Supabase при старте
-  useEffect(() => {
-    async function fetchUserProfile() {
-      if (!telegramUser.id || telegramUser.id === 'guest') {
-        setCheckingProfile(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('game_id')
-        .eq('telegram_id', String(telegramUser.id))
-        .single();
-
-      if (data && data.game_id) {
-        setGameId(data.game_id);
-        setShowRegModal(false);
-      } else {
-        // Если профиля нет в базе — показываем модальное окно регистрации
-        setShowRegModal(true);
-      }
-      setCheckingProfile(false);
-    }
-
-    fetchUserProfile();
+    initApp();
   }, [telegramUser.id]);
 
   const checkStuckDeals = async () => {
-    // Вычисляем время 60 минут назад
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-    // Ищем активные чаты, созданные более часа назад
     const { data: stuckChats, error } = await supabase
       .from('marketplace_chats')
       .select('id, listing_id, created_at')
@@ -138,13 +142,11 @@ const ADMIN_TELEGRAM_ID = '655880531'; // Твой реальный ID
     if (error || !stuckChats || stuckChats.length === 0) return;
 
     for (const chat of stuckChats) {
-      // Закрываем зависший чат
       await supabase
         .from('marketplace_chats')
         .update({ status: 'closed' })
         .eq('id', chat.id);
 
-      // Возвращаем связанное объявление в активный статус
       if (chat.listing_id) {
         await supabase
           .from('marketplace_listings')
@@ -152,80 +154,7 @@ const ADMIN_TELEGRAM_ID = '655880531'; // Твой реальный ID
           .eq('id', chat.listing_id);
       }
     }
-
-    if (stuckChats.length > 0) {
-      fetchAllListings();
-      fetchDisputedChats();
-    }
   };
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
-      window.Telegram.WebApp.ready();
-      window.Telegram.WebApp.expand();
-    }
-  }, []);
-
-  useEffect(() => {
-    const checkUserRegistration = async () => {
-      if (!telegramUser.id) return;
-
-      const { data } = await supabase
-        .from('users')
-        .select('*')
-        .eq('telegram_id', telegramUser.id)
-        .single();
-
-      if (data) {
-        if (data.is_banned) {
-          alert('Ваш аккаунт заблокирован администрацией!');
-          return;
-        }
-
-        setGameId(data.game_id);
-        setIsRegistered(true);
-        setShowRegModal(false);
-      } else {
-        setShowRegModal(true);
-      }
-    };
-
-    checkUserRegistration();
-    fetchAllListings();
-    fetchDisputedChats();
-  }, [telegramUser.id]);
-
-useEffect(() => {
-    const initApp = async () => {
-      if (!telegramUser.id) return;
-
-      // Проверяем зависшие сделки при старте
-      await checkStuckDeals();
-
-      const { data } = await supabase
-        .from('users')
-        .select('*')
-        .eq('telegram_id', telegramUser.id)
-        .single();
-
-      if (data) {
-        if (data.is_banned) {
-          alert('Ваш аккаунт заблокирован администрацией!');
-          return;
-        }
-
-        setGameId(data.game_id);
-        setIsRegistered(true);
-        setShowRegModal(false);
-      } else {
-        setShowRegModal(true);
-      }
-    };
-
-    initApp();
-    fetchAllListings();
-    fetchDisputedChats();
-  }, [telegramUser.id]);
 
   const fetchAllListings = async () => {
     const { data: activeData } = await supabase
@@ -267,29 +196,6 @@ useEffect(() => {
       setMyChats(data);
     }
   };
-
-  const handleRegister = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!inputGameId.trim()) return;
-
-  const { error } = await supabase.from('users').upsert([
-    {
-      telegram_id: String(telegramUser.id),
-      username: telegramUser.username,
-      game_id: inputGameId.trim(),
-      is_banned: false,
-      is_shadowbanned: false
-    }
-  ], { onConflict: 'telegram_id' });
-
-  if (!error) {
-    setGameId(inputGameId.trim());
-    setIsRegistered(true);
-    setShowRegModal(false);
-  } else {
-    alert(`Ошибка регистрации: ${error.message}`);
-  }
-};
 
   const handleCreateListing = async (formData: any) => {
     if (!isRegistered) {
@@ -586,6 +492,18 @@ useEffect(() => {
     fetchAllListings();
   };
 
+  // Пока идет начальная проверка профиля, показываем аккуратный экран загрузки
+  if (checkingProfile) {
+    return (
+      <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center font-sans">
+        <div className="text-center space-y-2">
+          <div className="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-xs text-gray-400">Загрузка профиля...</p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto relative font-sans pb-16">
       <header className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3">
@@ -630,24 +548,24 @@ useEffect(() => {
           👤 Профиль
         </button>
 
-        {(String(telegramUser.id) === ADMIN_TELEGRAM_ID || Number(telegramUser.id) === Number(ADMIN_TELEGRAM_ID)) && (
-  <button
-    onClick={() => {
-      fetchDisputedChats();
-      setActiveTab('moderation');
-    }}
-    className={`flex-1 py-2 rounded-lg font-medium transition relative ${
-      activeTab === 'moderation' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
-    }`}
-  >
-    🛡 Модер
-    {(pendingListings.length > 0 || disputedChats.length > 0) && (
-      <span className="absolute top-1 right-2 bg-red-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-mono">
-        {pendingListings.length + disputedChats.length}
-      </span>
-    )}
-  </button>
-)}
+        {isAdmin && (
+          <button
+            onClick={() => {
+              fetchDisputedChats();
+              setActiveTab('moderation');
+            }}
+            className={`flex-1 py-2 rounded-lg font-medium transition relative ${
+              activeTab === 'moderation' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            🛡 Модер
+            {(pendingListings.length > 0 || disputedChats.length > 0) && (
+              <span className="absolute top-1 right-2 bg-red-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-mono">
+                {pendingListings.length + disputedChats.length}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {activeTab === 'feed' ? (
@@ -693,15 +611,17 @@ useEffect(() => {
         />
       )}
 
+      {/* Модальное окно регистрации (теперь в единственном экземпляре) */}
       {showRegModal && (
-  <RegisterModal 
-    telegramUser={telegramUser} 
-    onRegistered={(newGameId) => {
-      setGameId(newGameId);
-      setShowRegModal(false);
-    }} 
-  />
-)}
+        <RegisterModal 
+          telegramUser={telegramUser} 
+          onRegistered={(newGameId) => {
+            setGameId(newGameId);
+            setIsRegistered(true);
+            setShowRegModal(false);
+          }} 
+        />
+      )}
 
       <ReviewModal
         show={showReviewModal}
@@ -721,15 +641,6 @@ useEffect(() => {
         onClose={() => setShowDisputeModal(false)}
         onSubmit={handleOpenDispute}
       />
-     {showRegModal && (
-        <RegisterModal 
-          telegramUser={telegramUser} 
-          onRegistered={(newGameId) => {
-            setGameId(newGameId);
-            setShowRegModal(false);
-          }} 
-        />
-      )}
     </main>
   );
 }
