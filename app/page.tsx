@@ -66,36 +66,32 @@ const ADMIN_TELEGRAM_ID = '655880531'; // Твой реальный ID
 // Проверка пользователя в таблице users при старте
   useEffect(() => {
     async function checkUserProfile() {
-      // Если данных о пользователе еще нет или это гость (и не захардкожен тест)
-      if (!telegramUser.id) {
-        setCheckingProfile(false);
-        return;
-      }
+      try {
+        if (!telegramUser.id || telegramUser.id === 'guest') {
+          setShowRegModal(true);
+          return;
+        }
 
-      // Если это гость с ПК, для теста можем дать возможность ввести ID, 
-      // а в Telegram будет подтягиваться реальный ID юзера
-      if (telegramUser.id === 'guest') {
+        const { data, error } = await supabase
+          .from('users')
+          .select('game_id')
+          .eq('telegram_id', String(telegramUser.id))
+          .single();
+
+        if (data && data.game_id) {
+          // Если ты уже есть в базе — пускаем в систему
+          setGameId(data.game_id);
+          setShowRegModal(false);
+        } else {
+          // Если тебя нет в базе — СТРОГО открываем окно регистрации
+          setShowRegModal(true);
+        }
+      } catch (err) {
+        console.error("Ошибка проверки профиля:", err);
         setShowRegModal(true);
+      } finally {
         setCheckingProfile(false);
-        return;
       }
-
-      const { data, error } = await supabase
-        .from('users')
-        .select('game_id')
-        .eq('telegram_id', String(telegramUser.id))
-        .single();
-
-      if (data && data.game_id) {
-        // Если нашли в базе — сразу авторизуем (записываем gameId, модалку не показываем)
-        setGameId(data.game_id);
-        setShowRegModal(false);
-      } else {
-        // Если в базе нет — открываем окно регистрации
-        setShowRegModal(true);
-      }
-      
-      setCheckingProfile(false);
     }
 
     checkUserProfile();
