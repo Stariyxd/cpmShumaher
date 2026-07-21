@@ -6,7 +6,6 @@ import RegisterModal from '@/components/RegisterModal';
 import ListingForm from '@/components/ListingForm';
 
 export default function Home() {
-  // Получаем реальные данные пользователя из Telegram WebApp
   const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
   
   const [telegramUser] = useState({ 
@@ -88,6 +87,31 @@ export default function Home() {
     }
   };
 
+  // Функция отправки уведомления администратору в Telegram
+  const sendTelegramNotification = async (listingTitle: string, listingPrice: number, username: string, userGameId: string) => {
+    const BOT_TOKEN = '8481767122:AAEupsu3pBNe6fal_kkiePBMl_u8TVtKVFY'; // Например: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+    const ADMIN_CHAT_ID = '655880531'; // Твой цифровой ID в телеграме
+
+    const message = `🔔 **Новое объявление на модерацию!**\n\n` +
+      `🚗 Машина: ${listingTitle}\n` +
+      `💰 Цена: $${listingPrice.toLocaleString()}\n` +
+      `👤 Продавец: @${username} (Game ID: ${userGameId})`;
+
+    try {
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: ADMIN_CHAT_ID,
+          text: message,
+          parse_mode: 'Markdown'
+        })
+      });
+    } catch (err) {
+      console.error('Ошибка отправки уведомления в Telegram:', err);
+    }
+  };
+
   // Создание объявления
   const handleCreateListing = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,10 +120,12 @@ export default function Home() {
       return;
     }
 
+    const numericPrice = Number(price);
+
     const { error } = await supabase.from('listings').insert([
       {
         title,
-        price: Number(price),
+        price: numericPrice,
         telegram_id: telegramUser.id,
         username: telegramUser.username,
         game_id: gameId,
@@ -108,6 +134,9 @@ export default function Home() {
     ]);
 
     if (!error) {
+      // Отправляем уведомление тебе в телеграм
+      await sendTelegramNotification(title, numericPrice, telegramUser.username, gameId);
+
       setTitle('');
       setPrice('');
       fetchListings();
@@ -131,7 +160,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Вынесенная форма создания объявления */}
+      {/* Форма создания объявления */}
       <ListingForm 
         title={title}
         setTitle={setTitle}
@@ -164,7 +193,7 @@ export default function Home() {
         )}
       </section>
 
-      {/* Вынесенная модалка регистрации */}
+      {/* Модалка регистрации */}
       <RegisterModal 
         show={showRegModal}
         onSubmit={handleRegister}
