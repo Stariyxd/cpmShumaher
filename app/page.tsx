@@ -17,10 +17,23 @@ const ADMIN_TELEGRAM_ID = '655880531'; // Замени на свой цифро�
 export default function Home() {
   const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
   
-  const [telegramUser] = useState({ 
-    id: webAppUser?.id || 0, 
-    username: webAppUser?.username || 'guest' 
+  // Получаем ID и юзернейм: сначала из Telegram WebApp, если нет — из localStorage, иначе дефолт
+  const [telegramUser, setTelegramUser] = useState({ 
+    id: webAppUser?.id || (typeof window !== 'undefined' ? localStorage.getItem('cpm_tg_id') || '655880531' : '655880531'), 
+    username: webAppUser?.username || (typeof window !== 'undefined' ? localStorage.getItem('cpm_tg_username') || 'Stariy' : 'Stariy')
   });
+
+  // Сохраняем реальные данные от Telegram в localStorage при запуске, чтобы они не терялись
+  useEffect(() => {
+    if (webAppUser?.id) {
+      localStorage.setItem('cpm_tg_id', String(webAppUser.id));
+      localStorage.setItem('cpm_tg_username', webAppUser.username || 'Stariy');
+      setTelegramUser({
+        id: webAppUser.id,
+        username: webAppUser.username || 'Stariy'
+      });
+    }
+  }, [webAppUser]);
 console.log('Current User ID:', telegramUser.id, 'Is Admin:', String(telegramUser.id) === ADMIN_TELEGRAM_ID);
   const [gameId, setGameId] = useState('');
   const [isRegistered, setIsRegistered] = useState(false);
