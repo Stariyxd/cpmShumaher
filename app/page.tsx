@@ -37,7 +37,11 @@ export default function Home() {
 // Проверка пользователя в таблице users при старте
   useEffect(() => {
     async function checkUserProfile() {
-      if (!telegramUser.id || telegramUser.id === 'guest') {
+      // Если ты тестируешь в браузере с ПК, даем фейковый ID или разрешаем ввод, 
+      // либо убираем жесткий блок для гостя, если хочешь протестировать модалку:
+      const currentId = telegramUser.id === 'guest' ? 'test_pc_user' : telegramUser.id;
+
+      if (!currentId) {
         setCheckingProfile(false);
         return;
       }
@@ -45,7 +49,7 @@ export default function Home() {
       const { data, error } = await supabase
         .from('users')
         .select('game_id')
-        .eq('telegram_id', String(telegramUser.id))
+        .eq('telegram_id', String(currentId))
         .single();
 
       if (data && data.game_id) {
@@ -59,6 +63,7 @@ export default function Home() {
 
     checkUserProfile();
   }, [telegramUser.id]);
+
   useEffect(() => {
     if (webAppUser?.id) {
       setTelegramUser({
@@ -67,7 +72,6 @@ export default function Home() {
       });
     }
   }, [webAppUser]);
-
   // Стейты
   const [gameId, setGameId] = useState<string>('');
   const [inputGameId, setInputGameId] = useState<string>('');
