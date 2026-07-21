@@ -26,9 +26,9 @@ export default function RegisterModal({ show, onSubmit, inputGameId, setInputGam
               required 
               value={inputGameId} 
               onChange={(e) => setInputGameId(e.target.value)}
-              placeholder="Например: 7841923"
-              className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-yellow-500 font-mono text-center"
-            />
+              placeholder="Например: 7841923 или AB123456"
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-yellow-500 font-mono text-center uppercase"
+           />
           </div>
 
           <button 
