@@ -10,8 +10,9 @@ import ModerationPanel from '@/components/ModerationPanel';
 import MyChatsList from '@/components/MyChatsList';
 import ReviewModal from '@/components/ReviewModal';
 import DisputeModal from '@/components/DisputeModal';
+import UserProfileStats from '@/components/UserProfileStats';
 
-const ADMIN_TELEGRAM_ID = 'ТВОЙ_TELEGRAM_ID'; // Замени на свой ID
+const ADMIN_TELEGRAM_ID = '655880531'; // Замени на свой цифровой ID
 
 export default function Home() {
   const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
@@ -36,10 +37,44 @@ export default function Home() {
 
   const [showDisputeModal, setShowDisputeModal] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'feed' | 'chats' | 'moderation' | 'chat'>('feed');
+  const [activeTab, setActiveTab] = useState<'feed' | 'chats' | 'moderation' | 'chat' | 'profile'>('feed');
 
   const [activeChat, setActiveChat] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const checkStuckDeals = async () => {
+    // Вычисляем время 60 минут назад
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    // Ищем активные чаты, созданные более часа назад
+    const { data: stuckChats, error } = await supabase
+      .from('marketplace_chats')
+      .select('id, listing_id, created_at')
+      .eq('status', 'active')
+      .lt('created_at', oneHourAgo);
+
+    if (error || !stuckChats || stuckChats.length === 0) return;
+
+    for (const chat of stuckChats) {
+      // Закрываем зависший чат
+      await supabase
+        .from('marketplace_chats')
+        .update({ status: 'closed' })
+        .eq('id', chat.id);
+
+      // Возвращаем связанное объявление в активный статус
+      if (chat.listing_id) {
+        await supabase
+          .from('marketplace_listings')
+          .update({ status: 'active' })
+          .eq('id', chat.listing_id);
+      }
+    }
+
+    if (stuckChats.length > 0) {
+      fetchAllListings();
+      fetchDisputedChats();
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
@@ -73,6 +108,38 @@ export default function Home() {
     };
 
     checkUserRegistration();
+    fetchAllListings();
+    fetchDisputedChats();
+  }, [telegramUser.id]);
+
+useEffect(() => {
+    const initApp = async () => {
+      if (!telegramUser.id) return;
+
+      // Проверяем зависшие сделки при старте
+      await checkStuckDeals();
+
+      const { data } = await supabase
+        .from('users')
+        .select('*')
+        .eq('telegram_id', telegramUser.id)
+        .single();
+
+      if (data) {
+        if (data.is_banned) {
+          alert('Ваш аккаунт заблокирован администрацией!');
+          return;
+        }
+
+        setGameId(data.game_id);
+        setIsRegistered(true);
+        setShowRegModal(false);
+      } else {
+        setShowRegModal(true);
+      }
+    };
+
+    initApp();
     fetchAllListings();
     fetchDisputedChats();
   }, [telegramUser.id]);
@@ -387,6 +454,55 @@ export default function Home() {
     }
   };
 
+  const handleResolveDispute = async (chatId: number, winnerRole: 'seller' | 'buyer', sanctionType: string) => {
+    const chat = disputedChats.find((c) => c.id === chatId);
+    if (!chat) return;
+
+    const loserId = winnerRole === 'seller' ? chat.buyer_id : chat.seller_id;
+
+    const { data: pastSanctions } = await supabase
+      .from('marketplace_sanctions')
+      .select('*')
+      .eq('user_id', loserId);
+
+    const count = pastSanctions ? pastSanctions.length : 0;
+    
+    let actualSanction = 'warning';
+    let isBanned = false;
+    if (count === 1) actualSanction = 'ban_7_days';
+    if (count === 2) actualSanction = 'ban_30_days';
+    if (count >= 3) {
+      actualSanction = 'ban_perm';
+      isBanned = true;
+    }
+
+    await supabase.from('marketplace_sanctions').insert([
+      {
+        user_id: loserId,
+        type: actualSanction,
+        reason: `Проигранный спор по сделке #${chatId}`,
+        issued_by: String(telegramUser.id)
+      }
+    ]);
+
+    if (isBanned || actualSanction.includes('ban')) {
+      await supabase
+        .from('users')
+        .update({ is_banned: true })
+        .eq('telegram_id', loserId);
+    }
+
+    await supabase.from('marketplace_chats').update({ status: 'closed' }).eq('id', chatId);
+    await supabase.from('marketplace_disputes').update({ status: 'resolved', winner: winnerRole }).eq('deal_id', chatId);
+    
+    const newListingStatus = winnerRole === 'seller' ? 'completed' : 'active';
+    await supabase.from('marketplace_listings').update({ status: newListingStatus }).eq('id', chat.listing_id);
+
+    alert(`Спор успешно разрешен! Нарушителю применена санкция: ${actualSanction}`);
+    fetchDisputedChats();
+    fetchAllListings();
+  };
+
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 max-w-md mx-auto relative font-sans pb-16">
       <header className="flex justify-between items-center mb-4 border-b border-gray-800 pb-3">
@@ -420,6 +536,15 @@ export default function Home() {
           }`}
         >
           💬 Сделки
+        </button>
+
+        <button
+          onClick={() => setActiveTab('profile')}
+          className={`flex-1 py-2 rounded-lg font-medium transition ${
+            activeTab === 'profile' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          👤 Профиль
         </button>
 
         {String(telegramUser.id) === ADMIN_TELEGRAM_ID && (
@@ -459,6 +584,8 @@ export default function Home() {
             setActiveTab('chat');
           }}
         />
+      ) : activeTab === 'profile' ? (
+        <UserProfileStats telegramId={telegramUser.id} gameId={gameId} />
       ) : activeTab === 'chat' && activeChat ? (
         <AnonymousChat
           activeChat={activeChat}
@@ -479,6 +606,7 @@ export default function Home() {
             loadChatMessages(chat.id);
             setActiveTab('chat');
           }}
+          onResolveDispute={handleResolveDispute}
         />
       )}
 
