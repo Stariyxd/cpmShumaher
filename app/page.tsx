@@ -19,19 +19,25 @@ export default function Home() {
   const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
 
   const [telegramUser, setTelegramUser] = useState(() => {
-    // Если Telegram WebApp передал ID — используем его
     if (webAppUser?.id) {
       return {
         id: String(webAppUser.id),
         username: webAppUser.username || 'user_' + webAppUser.id
       };
     }
-    // ИНАЧЕ — это гость! Никаких жестких дефолтных ID вроде твоего.
     return {
       id: 'guest',
       username: 'guest'
     };
   });
+
+  useEffect(() => {
+    if (webAppUser?.id) {
+      setTelegramUser({
+        id: String(webAppUser.id),
+        username: webAppUser.username || 'user_' + webAppUser.id
+      });
+    }
   }, [webAppUser]);
 console.log('Current User ID:', telegramUser.id, 'Is Admin:', String(telegramUser.id) === ADMIN_TELEGRAM_ID);
   const [gameId, setGameId] = useState('');
