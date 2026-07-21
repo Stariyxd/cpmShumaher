@@ -7,6 +7,8 @@ import ListingForm from '@/components/ListingForm';
 import MarketplaceFeed from '@/components/MarketplaceFeed';
 import AnonymousChat from '@/components/AnonymousChat';
 import ModerationPanel from '@/components/ModerationPanel';
+import MyChatsList from '@/components/MyChatsList';
+import ReviewModal from '@/components/ReviewModal';
 
 export default function Home() {
   const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
@@ -23,7 +25,14 @@ export default function Home() {
   
   const [listings, setListings] = useState<any[]>([]);
   const [pendingListings, setPendingListings] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'feed' | 'moderation' | 'chat'>('feed');
+  const [disputedChats, setDisputedChats] = useState<any[]>([]);
+  const [myChats, setMyChats] = useState<any[]>([]);
+  
+  // Состояния для модалки отзывов
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [pendingReviewChat, setPendingReviewChat] = useState<any>(null);
+  
+  const [activeTab, setActiveTab] = useState<'feed' | 'chats' | 'moderation' | 'chat'>('feed');
 
   const [activeChat, setActiveChat] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -55,6 +64,7 @@ export default function Home() {
 
     checkUserRegistration();
     fetchAllListings();
+    fetchDisputedChats();
   }, [telegramUser.id]);
 
   const fetchAllListings = async () => {
@@ -73,6 +83,29 @@ export default function Home() {
       .order('created_at', { ascending: false });
 
     if (pendingData) setPendingListings(pendingData);
+  };
+
+  const fetchDisputedChats = async () => {
+    const { data } = await supabase
+      .from('marketplace_chats')
+      .select('*, listing:marketplace_listings(*)')
+      .eq('status', 'dispute');
+
+    if (data) setDisputedChats(data);
+  };
+
+  const fetchMyChats = async () => {
+    if (!telegramUser.id) return;
+
+    const { data } = await supabase
+      .from('marketplace_chats')
+      .select('*, listing:marketplace_listings(*)')
+      .or(`seller_id.eq.${telegramUser.id},buyer_id.eq.${telegramUser.id}`)
+      .eq('status', 'active');
+
+    if (data) {
+      setMyChats(data);
+    }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -102,6 +135,20 @@ export default function Home() {
       return;
     }
 
+    // Проверяем статус бана пользователя
+    const { data: userData } = await supabase
+      .from('users')
+      .select('is_banned, is_shadowbanned')
+      .eq('telegram_id', String(telegramUser.id))
+      .single();
+
+    if (userData?.is_banned) {
+      alert('Ваш аккаунт заблокирован администрацией!');
+      return;
+    }
+
+    const listingStatus = userData?.is_shadowbanned ? 'rejected' : 'pending';
+
     const { error } = await supabase.from('marketplace_listings').insert([
       {
         type: formData.type,
@@ -113,13 +160,13 @@ export default function Home() {
         telegram_id: String(telegramUser.id),
         username: telegramUser.username,
         game_id: gameId,
-        status: 'pending'
+        status: listingStatus
       }
     ]);
 
     if (!error) {
       fetchAllListings();
-      alert('Объявление отправлено на модерацию!');
+      alert(userData?.is_shadowbanned ? 'Объявление отправлено на модерацию!' : 'Объявление отправлено на модерацию!');
     } else {
       alert(`Ошибка: ${error.message}`);
     }
@@ -143,7 +190,7 @@ export default function Home() {
 
     let { data: existingChat } = await supabase
       .from('marketplace_chats')
-      .select('*')
+      .select('*, listing:marketplace_listings(*)')
       .eq('listing_id', listing.id)
       .single();
 
@@ -165,13 +212,14 @@ export default function Home() {
         alert('Ошибка создания чата');
         return;
       }
-      existingChat = newChat;
+      
+      existingChat = { ...newChat, listing };
 
       await supabase.from('marketplace_listings').update({ status: 'reserved' }).eq('id', listing.id);
       fetchAllListings();
     }
 
-    setActiveChat({ ...existingChat, listing });
+    setActiveChat(existingChat);
     loadChatMessages(existingChat.id);
     setActiveTab('chat');
   };
@@ -186,7 +234,7 @@ export default function Home() {
     if (data) setChatMessages(data);
   };
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, type: 'text' | 'image' = 'text', mediaUrl: string | null = null) => {
     if (!activeChat) return;
 
     const role = activeChat.seller_id === String(telegramUser.id) ? 'seller' : 'buyer';
@@ -196,14 +244,96 @@ export default function Home() {
         chat_id: activeChat.id,
         sender_telegram_id: String(telegramUser.id),
         sender_role: role,
-        message_type: 'text',
-        content
+        message_type: type,
+        content: content,
+        media_url: mediaUrl
       }
     ]);
 
     if (!error) {
       loadChatMessages(activeChat.id);
     }
+  };
+
+  const handleCloseChat = async (newListingStatus: 'completed' | 'active') => {
+    if (!activeChat) return;
+
+    if (newListingStatus === 'completed') {
+      if (!confirm('Подтверждаете успешное завершение сделки?')) return;
+
+      await supabase
+        .from('marketplace_chats')
+        .update({ status: 'closed' })
+        .eq('id', activeChat.id);
+
+      await supabase
+        .from('marketplace_listings')
+        .update({ status: 'completed' })
+        .eq('id', activeChat.listing.id);
+
+      setPendingReviewChat(activeChat);
+      setShowReviewModal(true);
+    } else {
+      if (!confirm('Отменить сделку и вернуть объявление в ленту?')) return;
+
+      await supabase
+        .from('marketplace_chats')
+        .update({ status: 'closed' })
+        .eq('id', activeChat.id);
+
+      await supabase
+        .from('marketplace_listings')
+        .update({ status: 'active' })
+        .eq('id', activeChat.listing.id);
+
+      alert('Сделка отменена, объявление снова в ленте.');
+      setActiveChat(null);
+      setActiveTab('feed');
+      fetchAllListings();
+      fetchDisputedChats();
+    }
+  };
+
+  const handleSendReview = async (rating: number, comment: string) => {
+    if (!pendingReviewChat) return;
+
+    const targetId = String(pendingReviewChat.seller_id) === String(telegramUser.id) 
+      ? pendingReviewChat.buyer_id 
+      : pendingReviewChat.seller_id;
+
+    await supabase.from('marketplace_reviews').insert([
+      {
+        chat_id: pendingReviewChat.id,
+        target_telegram_id: String(targetId),
+        author_telegram_id: String(telegramUser.id),
+        rating,
+        comment
+      }
+    ]);
+
+    setShowReviewModal(false);
+    setPendingReviewChat(null);
+    alert('Спасибо за отзыв!');
+    
+    setActiveChat(null);
+    setActiveTab('feed');
+    fetchAllListings();
+    fetchDisputedChats();
+  };
+
+  const handleOpenDispute = async () => {
+    if (!activeChat) return;
+    if (!confirm('Вы уверены, что хотите позвать администратора? Чат будет передан на рассмотрение модераторам.')) return;
+
+    await supabase
+      .from('marketplace_chats')
+      .update({ status: 'dispute' })
+      .eq('id', activeChat.id);
+
+    alert('Администратор вызван! Ожидайте подключения.');
+    setActiveChat(null);
+    setActiveTab('feed');
+    fetchDisputedChats();
   };
 
   return (
@@ -228,26 +358,32 @@ export default function Home() {
         >
           🛒 Лента
         </button>
-        {activeChat && (
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex-1 py-2 rounded-lg font-medium transition ${
-              activeTab === 'chat' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            💬 Чат сделки
-          </button>
-        )}
+
         <button
-          onClick={() => setActiveTab('moderation')}
+          onClick={() => {
+            fetchMyChats();
+            setActiveTab('chats');
+          }}
+          className={`flex-1 py-2 rounded-lg font-medium transition ${
+            activeTab === 'chats' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          💬 Сделки
+        </button>
+
+        <button
+          onClick={() => {
+            fetchDisputedChats();
+            setActiveTab('moderation');
+          }}
           className={`flex-1 py-2 rounded-lg font-medium transition relative ${
             activeTab === 'moderation' ? 'bg-yellow-400 text-gray-950 font-bold' : 'text-gray-400 hover:text-white'
           }`}
         >
-          🛡 Модерация
-          {pendingListings.length > 0 && (
+          🛡 Модер
+          {(pendingListings.length > 0 || disputedChats.length > 0) && (
             <span className="absolute top-1 right-2 bg-red-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-mono">
-              {pendingListings.length}
+              {pendingListings.length + disputedChats.length}
             </span>
           )}
         </button>
@@ -258,23 +394,58 @@ export default function Home() {
           <ListingForm onSubmit={handleCreateListing} />
           <MarketplaceFeed listings={listings} onRespond={handleRespond} />
         </>
+      ) : activeTab === 'chats' ? (
+        <MyChatsList
+          chats={myChats}
+          onOpenChat={(chat) => {
+            setActiveChat(chat);
+            loadChatMessages(chat.id);
+            setActiveTab('chat');
+          }}
+        />
       ) : activeTab === 'chat' && activeChat ? (
         <AnonymousChat
           activeChat={activeChat}
           chatMessages={chatMessages}
-          setChatMessages={setChatMessages} // <--- Вот эту строчку нужно добавить
+          setChatMessages={setChatMessages}
           telegramUserId={telegramUser.id}
           onSendMessage={handleSendMessage}
+          onCloseChat={handleCloseChat}
+          onOpenDispute={handleOpenDispute}
         />
       ) : (
-        <ModerationPanel pendingListings={pendingListings} onAction={handleModerationAction} />
+        <ModerationPanel 
+          pendingListings={pendingListings} 
+          disputedChats={disputedChats}
+          onAction={handleModerationAction} 
+          onOpenChat={(chat) => {
+            setActiveChat(chat);
+            loadChatMessages(chat.id);
+            setActiveTab('chat');
+          }}
+        />
       )}
 
+      {/* Модальное окно регистрации Game ID */}
       <RegisterModal 
         show={showRegModal}
         onSubmit={handleRegister}
         inputGameId={inputGameId}
         setInputGameId={setInputGameId}
+      />
+
+      {/* Модальное окно оценки сделки и отзывов */}
+      <ReviewModal
+        show={showReviewModal}
+        onSubmit={handleSendReview}
+        onClose={() => {
+          setShowReviewModal(false);
+          setPendingReviewChat(null);
+          setActiveChat(null);
+          setActiveTab('feed');
+          fetchAllListings();
+          fetchDisputedChats();
+        }}
       />
     </main>
   );
