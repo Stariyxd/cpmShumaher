@@ -5,7 +5,7 @@ interface ModerationPanelProps {
   disputedChats: any[];
   onAction: (id: number, status: 'active' | 'rejected') => void;
   onOpenChat: (chat: any) => void;
-  onResolveDispute?: (chatId: number, resolution: string, sanctionType: string) => void;
+  onResolveDispute?: (chatId: number, winnerRole: 'seller' | 'buyer', sanctionType: string) => void;
 }
 
 export default function ModerationPanel({
