@@ -32,7 +32,10 @@ export default function Home() {
   const [activeChat, setActiveChat] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
 
-  // Автоматическое определение пользователя (Telegram WebApp или сохраненный на ПК / localhost)
+  // Твой реальный административный Telegram ID
+  const ADMIN_TELEGRAM_ID = '491338433298563077';
+
+  // Автоматическое определение пользователя (Telegram WebApp или твой ПК-профиль / локалхост)
   const [telegramUser, setTelegramUser] = useState<{ id: string; username: string }>(() => {
     if (typeof window !== 'undefined') {
       // 1. Проверяем официальный Telegram WebApp
@@ -51,21 +54,19 @@ export default function Home() {
         return { id: savedId, username: savedUsername || 'pc_user' };
       }
 
-      // 3. ДЛЯ УДОБСТВА ТЕСТА НА ПК: если это локальная разработка и ID еще не сохранен,
-      // можешь автоматически подставить свой админский ID, чтобы в браузере сразу открывалась твоя админка
-      // (Убери эту строчку, если хочешь тестировать чистых гостей)
+      // 3. Автоматически подставляем твой админский аккаунт для разработки на ПК / localhost
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return { id: '655880531', username: 'Stariy' };
+        return { id: ADMIN_TELEGRAM_ID, username: 'Stariy' };
       }
     }
 
+    // Запасной вариант для ПК, если локалхост не сработал
     return {
-      id: 'guest',
-      username: 'guest'
+      id: ADMIN_TELEGRAM_ID,
+      username: 'Stariy'
     };
   });
 
-  const ADMIN_TELEGRAM_ID = '655880531';
   const isAdmin = String(telegramUser.id) === ADMIN_TELEGRAM_ID;
 
   // Инициализация Telegram WebApp UI
@@ -492,7 +493,6 @@ export default function Home() {
     fetchAllListings();
   };
 
-  // Пока идет начальная проверка профиля, показываем аккуратный экран загрузки
   if (checkingProfile) {
     return (
       <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center font-sans">
@@ -611,7 +611,6 @@ export default function Home() {
         />
       )}
 
-      {/* Модальное окно регистрации (теперь в единственном экземпляре) */}
       {showRegModal && (
         <RegisterModal 
           telegramUser={telegramUser} 
