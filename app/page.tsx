@@ -13,13 +13,14 @@ import DisputeModal from '@/components/DisputeModal';
 import UserProfileStats from '@/components/UserProfileStats';
 
 
-const ADMIN_TELEGRAM_ID = '655880531'; // Замени на свой цифровой ID
 
 export default function Home() {
   // Стейты для проверки профиля и регистрации
 
 
   // Получаем реальные данные строго из Telegram WebApp
+
+
   const webAppUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
 
   const [telegramUser, setTelegramUser] = useState(() => {
@@ -34,6 +35,7 @@ export default function Home() {
       username: 'guest'
     };
   });
+const ADMIN_TELEGRAM_ID = '655880531'; // Твой реальный ID
 // Принудительная проверка или открытие модалки для теста
   useEffect(() => {
     async function checkUserProfile() {
