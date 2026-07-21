@@ -55,39 +55,34 @@ const ADMIN_TELEGRAM_ID = '655880531'; // Твой реальный ID
 // Проверка прав администратора в консоли
   const isAdmin = String(telegramUser.id) === ADMIN_TELEGRAM_ID;
   console.log('Current User ID:', telegramUser.id, 'Is Admin:', isAdmin);
-// 4. Только ПОСЛЕ этого идет проверка checkingProfile (лоадер)
-  if (checkingProfile) {
-    return (
-      <div style={{ background: '#0e1621', height: '100vh', color: '#fff', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        Загрузка...
-      </div>
-    );
-  }
+
 // Проверка пользователя в таблице users при старте
   useEffect(() => {
     async function checkUserProfile() {
       try {
         if (!telegramUser.id || telegramUser.id === 'guest') {
           setShowRegModal(true);
+          setCheckingProfile(false);
           return;
         }
 
+        // Используем .maybeSingle() вместо .single() — она не падает с ошибкой, если юзера еще нет в базе
         const { data, error } = await supabase
           .from('users')
           .select('game_id')
           .eq('telegram_id', String(telegramUser.id))
-          .single();
+          .maybeSingle();
 
         if (data && data.game_id) {
-          // Если ты уже есть в базе — пускаем в систему
+          // Юзер есть в базе — авторизуем
           setGameId(data.game_id);
           setShowRegModal(false);
         } else {
-          // Если тебя нет в базе — СТРОГО открываем окно регистрации
+          // Юзера нет в базе — открываем регистрацию
           setShowRegModal(true);
         }
       } catch (err) {
-        console.error("Ошибка проверки профиля:", err);
+        console.error("Ошибка:", err);
         setShowRegModal(true);
       } finally {
         setCheckingProfile(false);
