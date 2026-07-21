@@ -12,6 +12,7 @@ import ReviewModal from '@/components/ReviewModal';
 import DisputeModal from '@/components/DisputeModal';
 import UserProfileStats from '@/components/UserProfileStats';
 
+
 const ADMIN_TELEGRAM_ID = '655880531'; // Замени на свой цифровой ID
 
 export default function Home() {
@@ -39,12 +40,13 @@ export default function Home() {
       });
     }
   }, [webAppUser]);
-console.log('Current User ID:', telegramUser.id, 'Is Admin:', String(telegramUser.id) === ADMIN_TELEGRAM_ID);
-  const [gameId, setGameId] = useState('');
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [showRegModal, setShowRegModal] = useState(false);
-  const [inputGameId, setInputGameId] = useState('');
-  
+
+  // Стейты
+  const [gameId, setGameId] = useState<string>('');
+  const [inputGameId, setInputGameId] = useState<string>('');
+  const [isRegistered, setIsRegistered] = useState<boolean>(false);
+  const [showRegModal, setShowRegModal] = useState<boolean>(false);
+
   const [listings, setListings] = useState<any[]>([]);
   const [pendingListings, setPendingListings] = useState<any[]>([]);
   const [disputedChats, setDisputedChats] = useState<any[]>([]);
@@ -52,13 +54,45 @@ console.log('Current User ID:', telegramUser.id, 'Is Admin:', String(telegramUse
   
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [pendingReviewChat, setPendingReviewChat] = useState<any>(null);
-
   const [showDisputeModal, setShowDisputeModal] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'feed' | 'chats' | 'moderation' | 'chat' | 'profile'>('feed');
 
   const [activeChat, setActiveChat] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [checkingProfile, setCheckingProfile] = useState<boolean>(true);
+
+  // Проверка прав администратора в консоли
+  const isAdmin = String(telegramUser.id) === ADMIN_TELEGRAM_ID;
+  console.log('Current User ID:', telegramUser.id, 'Is Admin:', isAdmin);
+
+  // Проверка привязки игрового ID в Supabase при старте
+  useEffect(() => {
+    async function fetchUserProfile() {
+      if (!telegramUser.id || telegramUser.id === 'guest') {
+        setCheckingProfile(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('game_id')
+        .eq('telegram_id', String(telegramUser.id))
+        .single();
+
+      if (data && data.game_id) {
+        setGameId(data.game_id);
+        setShowRegModal(false);
+      } else {
+        // Если профиля нет в базе — показываем модальное окно регистрации
+        setShowRegModal(true);
+      }
+      setCheckingProfile(false);
+    }
+
+    fetchUserProfile();
+  }, [telegramUser.id]);
+
   const checkStuckDeals = async () => {
     // Вычисляем время 60 минут назад
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -204,27 +238,27 @@ useEffect(() => {
   };
 
   const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputGameId) return;
+  e.preventDefault();
+  if (!inputGameId.trim()) return;
 
-    const { error } = await supabase.from('users').upsert([
-      { 
-        telegram_id: String(telegramUser.id), 
-        username: telegramUser.username, 
-        game_id: inputGameId,
-        is_banned: false,
-        is_shadowbanned: false
-      }
-    ], { onConflict: 'telegram_id' });
-
-    if (!error) {
-      setGameId(inputGameId);
-      setIsRegistered(true);
-      setShowRegModal(false);
-    } else {
-      alert(`Ошибка регистрации: ${error.message}`);
+  const { error } = await supabase.from('users').upsert([
+    {
+      telegram_id: String(telegramUser.id),
+      username: telegramUser.username,
+      game_id: inputGameId.trim(),
+      is_banned: false,
+      is_shadowbanned: false
     }
-  };
+  ], { onConflict: 'telegram_id' });
+
+  if (!error) {
+    setGameId(inputGameId.trim());
+    setIsRegistered(true);
+    setShowRegModal(false);
+  } else {
+    alert(`Ошибка регистрации: ${error.message}`);
+  }
+};
 
   const handleCreateListing = async (formData: any) => {
     if (!isRegistered) {
@@ -628,12 +662,15 @@ useEffect(() => {
         />
       )}
 
-      <RegisterModal 
-        show={showRegModal}
-        onSubmit={handleRegister}
-        inputGameId={inputGameId}
-        setInputGameId={setInputGameId}
-      />
+      {showRegModal && telegramUser.id !== 'guest' && (
+  <RegisterModal 
+    telegramUser={telegramUser} 
+    onRegistered={(newGameId) => {
+      setGameId(newGameId);
+      setShowRegModal(false);
+    }} 
+  />
+)}
 
       <ReviewModal
         show={showReviewModal}
