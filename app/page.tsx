@@ -32,13 +32,12 @@ export default function Home() {
   const [activeChat, setActiveChat] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
 
-  // Твой реальный административный Telegram ID
+  // Твой единственный административный Telegram ID
   const ADMIN_TELEGRAM_ID = '491338433298563077';
 
-  // Автоматическое определение пользователя (только Telegram WebApp или честный гость)
+  // Строгое определение пользователя: либо Telegram WebApp, либо гость. Никаких левых автоподстановок.
   const [telegramUser, setTelegramUser] = useState<{ id: string; username: string }>(() => {
     if (typeof window !== 'undefined') {
-      // 1. Проверяем официальный Telegram WebApp
       const webAppUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
       if (webAppUser?.id) {
         return {
@@ -46,24 +45,23 @@ export default function Home() {
           username: webAppUser.username || 'user_' + webAppUser.id
         };
       }
-
-      // 2. Если зашли с ПК / браузера вне WebApp, проверяем, не сохранялся ли ID ранее в этом браузере
-      const savedId = localStorage.getItem('cpm_saved_telegram_id');
-      const savedUsername = localStorage.getItem('cpm_saved_telegram_username');
-      if (savedId) {
-        return { id: savedId, username: savedUsername || 'pc_user' };
-      }
     }
 
-    // Если это сторонний пользователь, открывший ссылку — он гость, а не админ!
     return {
       id: 'guest',
       username: 'guest'
     };
   });
+
   const isAdmin = String(telegramUser.id) === ADMIN_TELEGRAM_ID;
 
-  // Единая функция проверки профиля, зависших сделок и загрузки данных
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+    }
+  }, []);
+
   useEffect(() => {
     async function initApp() {
       if (!telegramUser.id || telegramUser.id === 'guest') {
@@ -73,10 +71,8 @@ export default function Home() {
       }
 
       try {
-        // Проверяем зависшие сделки
         await checkStuckDeals();
 
-        // Проверяем пользователя в таблице users
         const { data, error } = await supabase
           .from('users')
           .select('*')
@@ -98,11 +94,9 @@ export default function Home() {
           setIsRegistered(true);
           setShowRegModal(false);
         } else {
-          // Если в базе нет — открываем модалку регистрации
           setShowRegModal(true);
         }
 
-        // Подгружаем ленту и споры
         await fetchAllListings();
         await fetchDisputedChats();
 
@@ -171,7 +165,7 @@ export default function Home() {
   };
 
   const fetchMyChats = async () => {
-    if (!telegramUser.id) return;
+    if (!telegramUser.id || telegramUser.id === 'guest') return;
 
     const { data } = await supabase
       .from('marketplace_chats')
