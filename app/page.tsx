@@ -15,13 +15,12 @@ interface Ad {
 }
 
 export default function Home() {
-  const [telegramUser] = useState<{ id: number; username?: string } | collection>({ id: 12345678, username: 'shumaher_cpm' });
+  const [telegramUser] = useState<{ id: number; username?: string }>({ id: 12345678, username: 'shumaher_cpm' });
   const [gameId] = useState<string>('7841923');
   const [currentView, setCurrentView] = useState<'marketplace' | 'admin'>('marketplace');
   const [activeTab, setActiveTab] = useState<'sell' | 'buy' | 'exchange'>('sell');
   const [showModal, setShowModal] = useState(false);
 
-  // Общий список объявлений (включая те, что ждут модерации)
   const [ads, setAds] = useState<Ad[]>([
     {
       id: '1',
@@ -43,11 +42,10 @@ export default function Home() {
       description: 'Новый лот, ждет проверки модератором.',
       gameId: '7841923',
       contact: '@shumaher_cpm',
-      status: 'pending', // Висит на модерации
+      status: 'pending',
     }
   ]);
 
-  // Поля формы создания
   const [formCategory, setFormCategory] = useState<'sell' | 'buy' | 'exchange'>('sell');
   const [formTitle, setFormTitle] = useState('');
   const [formPrice, setFormPrice] = useState('');
@@ -66,7 +64,7 @@ export default function Home() {
       description: formDesc,
       gameId: gameId,
       contact: '@' + (telegramUser.username || 'user'),
-      status: 'pending', // Все новые уходят на модерацию админу
+      status: 'pending',
     };
 
     setAds([newAd, ...ads]);
@@ -79,7 +77,6 @@ export default function Home() {
     alert('Объявление отправлено администратору на модерацию!');
   };
 
-  // Действия админа
   const handleApprove = (id: string) => {
     setAds(ads.map(ad => ad.id === id ? { ...ad, status: 'active' } : ad));
   };
@@ -88,16 +85,13 @@ export default function Home() {
     setAds(ads.map(ad => ad.id === id ? { ...ad, status: 'rejected' } : ad));
   };
 
-  // Фильтрация для пользователей (видна только активная лента)
   const filteredAds = ads.filter(ad => ad.category === activeTab && ad.status === 'active');
-  // Для админа (видны все на модерации)
   const pendingAds = ads.filter(ad => ad.status === 'pending');
 
   return (
     <main className="min-h-screen bg-gray-950 text-white font-sans pb-24 p-4">
       <div className="max-w-md mx-auto space-y-4">
         
-        {/* Шапка с переключением на Админку */}
         <header className="flex justify-between items-center bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-lg">
           <div>
             <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Режим работы</span>
@@ -123,7 +117,6 @@ export default function Home() {
           </div>
         </header>
 
-        {/* РАЗДЕЛ 1: АДМИН-ПАНЕЛЬ МОДЕРАЦИИ */}
         {currentView === 'admin' ? (
           <div className="space-y-3">
             <div className="bg-gray-900 border border-yellow-500/30 p-4 rounded-2xl space-y-1">
@@ -177,7 +170,6 @@ export default function Home() {
             )}
           </div>
         ) : (
-          /* РАЗДЕЛ 2: ПУБЛИЧНАЯ ВИТРИНА */
           <>
             <div className="flex bg-gray-900 p-1.5 rounded-2xl border border-gray-800 shadow-md">
               <button 
@@ -239,7 +231,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Модалка создания */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-gray-900 border border-gray-800 w-full max-w-md p-5 rounded-3xl space-y-4 shadow-2xl my-auto">
